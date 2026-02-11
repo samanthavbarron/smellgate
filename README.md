@@ -20,9 +20,8 @@ git clone https://github.com/bluesky-social/statusphere-example-app.git
 cd statusphere-example-app
 cp env.template .env.local
 pnpm install
-pnpm migrate
 pnpm dev
-# Navigate to http://localhost:3000
+# Navigate to http://127.0.0.1:3000
 ```
 
 To read data from the network, you'll need an instance of Tap running. Find instructions for getting set up by checking out the [Statusphere tutorial](https://atproto.com/guides/applications) or the [Tap repository](https://github.com/bluesky-social/indigo/blob/main/cmd/tap/README.md).
