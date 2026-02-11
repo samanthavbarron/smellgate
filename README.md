@@ -11,6 +11,8 @@ See https://atproto.com/guides/applications for a guide through the codebase.
 
 This project uses [Next.js](https://nextjs.org) as a server framework and [Tap](https://github.com/bluesky-social/indigo/blob/main/cmd/tap/README.md) for syncing data from the Atmosphere.
 
+This is a revamp of the original Statusphere example app which can be found on the [statusphere-og](https://github.com/bluesky-social/statusphere-example-app/tree/statusphere-og) branch.
+
 ## Getting Started
 
 ```sh
