@@ -29,7 +29,9 @@ To read data from the network, you'll need an instance of [Tap](https://github.c
 
 ```sh
 pnpm test              # fast unit tests (no PDS, no network)
-pnpm test:integration  # integration tests (boots an in-process PDS)
+pnpm test:integration  # integration tests: boot an in-process PDS, drive
+                       # a real OAuth authorization-code flow, write + read
+                       # a record on it (see tests/integration/oauth-pds.test.ts)
 ```
 
 ## Local ephemeral PDS
