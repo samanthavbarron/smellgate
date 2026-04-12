@@ -24,10 +24,10 @@ export default async function Home() {
       <main className="w-full max-w-md mx-auto p-8">
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-zinc-900 dark:text-zinc-100 mb-2">
-            Statusphere
+            smellgate
           </h1>
           <p className="text-zinc-600 dark:text-zinc-400">
-            Set your status on the Atmosphere
+            A letterboxd-style app for perfumes, built on ATProto
           </p>
         </div>
 
@@ -50,7 +50,7 @@ export default async function Home() {
         {topStatuses.length > 0 && (
           <div className="bg-white dark:bg-zinc-900 rounded-lg border border-zinc-200 dark:border-zinc-800 p-6 mb-6">
             <h3 className="text-sm font-medium text-zinc-500 dark:text-zinc-400 mb-3">
-              Top Statuses
+              Top
             </h3>
             <div className="flex flex-wrap gap-2">
               {topStatuses.map((s) => (
@@ -74,7 +74,7 @@ export default async function Home() {
           </h3>
           {statuses.length === 0 ? (
             <p className="text-zinc-500 dark:text-zinc-400 text-sm">
-              No statuses yet. Be the first!
+              Nothing here yet.
             </p>
           ) : (
             <ul className="space-y-3">

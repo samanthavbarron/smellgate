@@ -44,7 +44,7 @@ export function StatusPicker({ currentStatus }: StatusPickerProps) {
   return (
     <div>
       <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-3">
-        Set your status
+        Pick one
       </p>
       <div className="flex flex-wrap gap-2">
         {EMOJIS.map((emoji) => (
