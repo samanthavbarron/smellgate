@@ -14,6 +14,12 @@
  */
 
 import { TestNetworkNoAppView } from '@atproto/dev-env'
+import {
+  NodeOAuthClient,
+  buildAtprotoLoopbackClientMetadata,
+  type NodeSavedSession,
+  type NodeSavedState,
+} from '@atproto/oauth-client-node'
 
 /** Default deterministic test accounts. Stable across runs. */
 export const DEFAULT_TEST_ACCOUNTS = [
@@ -96,6 +102,77 @@ export async function createTestAccounts(
     })
   }
   return out
+}
+
+/**
+ * Build a {@link NodeOAuthClient} wired to an ephemeral test PDS.
+ *
+ * Mirrors the loopback-client branch of the production OAuth setup in
+ * `lib/auth/client.ts`: loopback `client_id`, no keyset,
+ * `token_endpoint_auth_method: 'none'`. Differences from production:
+ *
+ * - `allowHttp: true` so the client will talk to the http-only test PDS.
+ * - `handleResolver` forced to the test PDS URL so `alice.test` resolves
+ *   against the in-process server instead of DNS / `bsky.social`.
+ * - Scope is `atproto transition:generic` (broad write access) since
+ *   smellgate lexicons don't exist yet and the integration test writes a
+ *   stock `app.bsky.feed.post`. Production uses a narrower `repo:*` scope.
+ *
+ * State and session stores are in-memory `Map`s — tests don't need
+ * persistence across runs.
+ *
+ * @param pds - handle returned by {@link startEphemeralPds}
+ * @param opts.scope - override scope (defaults to `atproto transition:generic`)
+ * @param opts.redirectUri - override redirect URI (defaults to
+ *   `http://127.0.0.1/` — valid loopback form, never actually dereferenced
+ *   because the test reads the `code` from the redirect Location header)
+ */
+export function createTestOAuthClient(
+  pds: EphemeralPds,
+  opts: {
+    scope?: `atproto${string}` | `atproto ${string}`
+    redirectUri?: `http://127.0.0.1${string}` | `http://[::1]${string}`
+  } = {},
+): NodeOAuthClient {
+  const scope = opts.scope ?? 'atproto transition:generic'
+  const redirectUri = opts.redirectUri ?? 'http://127.0.0.1/'
+  const clientMetadata = buildAtprotoLoopbackClientMetadata({
+    scope,
+    redirect_uris: [redirectUri],
+  })
+  const stateStore = new Map<string, NodeSavedState>()
+  const sessionStore = new Map<string, NodeSavedSession>()
+  return new NodeOAuthClient({
+    clientMetadata,
+    allowHttp: true,
+    handleResolver: pds.url,
+    // Resolve DIDs against the in-process PLC directory, not the public
+    // `plc.directory`. Without this the OAuth client would try to hit
+    // the network during authorization and fail.
+    plcDirectoryUrl: pds.network.plc.url,
+    stateStore: {
+      async get(key) {
+        return stateStore.get(key)
+      },
+      async set(key, value) {
+        stateStore.set(key, value)
+      },
+      async del(key) {
+        stateStore.delete(key)
+      },
+    },
+    sessionStore: {
+      async get(key) {
+        return sessionStore.get(key)
+      },
+      async set(key, value) {
+        sessionStore.set(key, value)
+      },
+      async del(key) {
+        sessionStore.delete(key)
+      },
+    },
+  })
 }
 
 async function withTimeout<T>(
