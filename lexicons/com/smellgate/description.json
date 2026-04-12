@@ -1,0 +1,31 @@
+{
+  "id": "com.smellgate.description",
+  "description": "A community-authored description of a perfume. Distinct from the curator-authored canonical perfume.description field.",
+  "defs": {
+    "main": {
+      "type": "record",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": ["perfume", "body", "createdAt"],
+        "properties": {
+          "perfume": {
+            "type": "ref",
+            "ref": "com.atproto.repo.strongRef",
+            "description": "StrongRef to the com.smellgate.perfume record this description is about."
+          },
+          "body": {
+            "type": "string",
+            "maxGraphemes": 5000
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime"
+          }
+        }
+      }
+    }
+  },
+  "$type": "com.atproto.lexicon.schema",
+  "lexicon": 1
+}

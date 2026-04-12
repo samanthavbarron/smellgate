@@ -1,0 +1,37 @@
+{
+  "id": "com.smellgate.shelfItem",
+  "description": "A perfume on a user's shelf. Written by any user about their own shelf.",
+  "defs": {
+    "main": {
+      "type": "record",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": ["perfume", "createdAt"],
+        "properties": {
+          "perfume": {
+            "type": "ref",
+            "ref": "com.atproto.repo.strongRef",
+            "description": "StrongRef to the com.smellgate.perfume record this shelf item is about."
+          },
+          "acquiredAt": {
+            "type": "string",
+            "format": "datetime"
+          },
+          "bottleSizeMl": {
+            "type": "integer"
+          },
+          "isDecant": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime"
+          }
+        }
+      }
+    }
+  },
+  "$type": "com.atproto.lexicon.schema",
+  "lexicon": 1
+}

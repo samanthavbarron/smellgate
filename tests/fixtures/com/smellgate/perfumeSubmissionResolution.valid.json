@@ -1,0 +1,14 @@
+{
+  "$type": "com.smellgate.perfumeSubmissionResolution",
+  "submission": {
+    "uri": "at://did:plc:fixturecuratorxxxxxxxxxx/com.smellgate.perfumeSubmission/3kxyz111aaa",
+    "cid": "bafyreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku"
+  },
+  "decision": "approved",
+  "perfume": {
+    "uri": "at://did:plc:fixturecuratorxxxxxxxxxx/com.smellgate.perfume/3kxyz222bbb",
+    "cid": "bafyreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku"
+  },
+  "note": "Approved and published as a canonical entry.",
+  "createdAt": "2024-02-05T10:00:00.000Z"
+}
