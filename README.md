@@ -8,6 +8,10 @@ See [PLAN.md](PLAN.md) for the product vision and [AGENTS.md](AGENTS.md) for how
 
 Very early. The repo is currently scaffolding — we're working through Phase 0 (foundations) before any feature work lands. Track progress via [GitHub issues](https://github.com/samanthavbarron/smellgate/issues).
 
+## Data model
+
+smellgate is ATProto-native: user records (shelves, reviews, descriptions, votes, comments) live in users' PDSs under custom lexicons in the `com.smellgate.*` namespace. The canonical source of truth for record types, field shapes, reference conventions, and the curator-account / submission flow is [docs/lexicons.md](docs/lexicons.md). Read it before touching anything under `lexicons/` or writing code that reads or writes records.
+
 ## Getting Started
 
 ```sh
