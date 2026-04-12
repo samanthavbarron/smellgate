@@ -8,6 +8,16 @@ All smellgate lexicons live under **`com.smellgate.*`** (the reverse of `smellga
 
 We publish lexicon authority via a DNS TXT record on `_lexicon.smellgate.com` before any records are written under this namespace in production. Until that's done, use `com.smellgate.*` in development but do not expect records written against an uncontrolled namespace to be authoritative.
 
+### Lexicon authority publication
+
+Per ATProto's [NSID resolution](https://atproto.com/specs/nsid) approach, the authority for an NSID is the DNS owner of the reversed domain. We own `smellgate.com`, which makes us the authority for everything under `com.smellgate.*`. To make this assertion machine-checkable, we publish a DNS TXT record at the conventional `_lexicon.<domain>` location:
+
+- **Hostname:** `_lexicon.smellgate.com`
+- **Type:** `TXT`
+- **Value:** `did=<curator-account-DID>` — the DID of the smellgate curator account that owns the lexicon definitions. (The exact text format follows the [ATProto NSID resolution](https://atproto.com/specs/nsid) spec; if the spec has moved on by the time this is set, follow the spec, not this doc.)
+
+**Status:** not yet set. Samantha needs to add this record before any production records are written under `com.smellgate.*` (i.e. before Phase 1 lands a curator-PDS seed against a real, non-test PDS). Coding agents cannot make DNS changes; if you reach a point where this becomes blocking, halt and ask. Local development and integration tests against an ephemeral PDS do not require the record to exist.
+
 ## The canonical-identity problem, and how we solve it
 
 In a PDS-only world, nothing inherently stops ten users from each creating a record for "Chanel No. 5". We need *some* notion of canonical identity so that reviews, shelves, descriptions, votes, and comments can all agree on what perfume they're about.
