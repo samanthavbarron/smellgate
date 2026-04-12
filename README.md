@@ -21,6 +21,13 @@ pnpm dev
 
 To read data from the network, you'll need an instance of [Tap](https://github.com/bluesky-social/indigo/blob/main/cmd/tap/README.md) running.
 
+## Running tests
+
+```sh
+pnpm test              # fast unit tests (no PDS, no network)
+pnpm test:integration  # integration tests (will eventually hit a local PDS)
+```
+
 ## Credits
 
 Bootstrapped from the [`bluesky-social/statusphere-example-app`](https://github.com/bluesky-social/statusphere-example-app) starter.

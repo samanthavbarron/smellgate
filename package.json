@@ -9,7 +9,9 @@
     "start": "pnpm migrate && next start --port ${PORT-3000}",
     "migrate": "tsx scripts/migrate.ts",
     "gen-key": "tsx scripts/gen-key.ts",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "vitest run tests/unit",
+    "test:integration": "vitest run tests/integration"
   },
   "dependencies": {
     "@atproto/common-web": "^0.4.11",
@@ -33,7 +35,8 @@
     "eslint-config-next": "16.0.10",
     "tailwindcss": "^4",
     "tsx": "^4.21.0",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.4"
   },
   "packageManager": "pnpm@8.15.9+sha512.499434c9d8fdd1a2794ebf4552b3b25c0a633abcee5bb15e7b5de90f32f47b513aca98cd5cfd001c31f0db454bc3804edccd578501e4ca293a6816166bbd9f81"
 }
