@@ -12,6 +12,8 @@ Development of this app should rely heavily on unit and integration testing. All
 
 This will be an app built on ATProto. As such, data storage will occur on users' PDSs, so we will not need a database.
 
+Features should ALWAYS be implemented as PRs to main, all features should be planned as GitHub issues. Always open PRs for new features for issues. ALWAYS assume that multiple coding agents will be working on features simultaneously.
+
 ## Initial Steps
 
 Everything in this repository is currently a fork of the example `bluesky-social/statusphere-example-app` just to get the initial plumbing up for an app built on ATProto.
