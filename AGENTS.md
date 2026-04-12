@@ -12,6 +12,41 @@ Guidance for coding agents working on `smellgate`. Read [PLAN.md](PLAN.md) first
 - **Local dev first, hosting decided later.** Don't architect around any specific host. Cloudflare Pages/Workers was an early idea but is not a hard requirement — if it gets in the way, we'll pick something else. Avoid painting ourselves into a corner (e.g. don't adopt host-specific KV/DO APIs for core logic), but don't contort code to preserve Workers compatibility either.
 - **Challenge dumb suggestions.** The humans here are strong on perfume and general dev but light on TS/JS. If a request would paint us into a corner (e.g. "just add a Postgres table"), push back and explain.
 
+## Working mode and human oversight
+
+The humans want to be **hands-off on implementation details** and only spend their attention on decisions that matter. Operate accordingly.
+
+- **Default: proceed autonomously.** For routine implementation work — wiring up tests, adding a CI job, defining a lexicon that matches what's already in [docs/lexicons.md](docs/lexicons.md), writing boilerplate — just do it. Don't ask for permission on every step. Don't ask the user to pick between two reasonable equivalents; pick one, write down why in the PR, and move on.
+- **Halt and ask when the decision is critical.** Stop and wait for human input before proceeding if any of these are true:
+  - **Data model changes** beyond what [docs/lexicons.md](docs/lexicons.md) already specifies. New record types, renamed fields, changed semantics, changed reference patterns — all need sign-off. Lexicons in the wild are expensive to undo.
+  - **Security-relevant choices:** auth scopes, credential storage, anything that touches OAuth session handling, anything that exposes user PDS write capability.
+  - **Irreversible or hard-to-reverse actions:** force-pushes, history rewrites, deleting branches with unmerged work, rotating keys, publishing records to a production curator account, DNS changes.
+  - **Cost or vendor lock-in:** signing up for a paid service, adopting a host-specific API for core logic, committing to an external dependency that isn't trivially swappable.
+  - **Scope expansion:** if an issue's scope starts growing beyond what's written in the issue body, stop and either file a new issue or ask whether to expand the existing one. Don't let PRs silently balloon.
+  - **You genuinely don't know** what the right call is and would be guessing. Asking is cheaper than being wrong.
+- **How to halt.** Comment on the relevant issue or PR with a clear summary: what you were about to do, what decision is blocking you, what the options are, and what you'd recommend. Then stop work on that thread and pick up something else while waiting.
+- **Proceed vs halt heuristic.** If the worst-case outcome of being wrong is "open a follow-up PR to fix it," proceed. If it's "users lose data," "we publish bad canonical records," "we can't merge to main anymore," or "we owe someone money" — halt.
+
+## Adversarial review
+
+Every non-trivial PR opened by a coding agent must be reviewed by a **separate adversarial-review agent** before being merged. The review agent's job is to find reasons *not* to merge, not to rubber-stamp.
+
+- **Spawn a fresh subagent** for the review. It should not share context with the agent that wrote the PR — that's the whole point. Give it the PR URL, the linked issue, and [AGENTS.md](AGENTS.md) + [docs/lexicons.md](docs/lexicons.md), and ask it to report problems.
+- **What the reviewer looks for:**
+  - Does the PR actually close the issue as written, or is it solving a subtly different problem?
+  - Are the tests real? A unit test that imports mocks and asserts on the mocks is not a test. Integration tests must hit the local PDS (see #7), not mocks.
+  - Is anything in the diff out of scope for the linked issue? Unrelated "while I'm here" cleanups should be split out.
+  - Does the PR violate any rule in [AGENTS.md](AGENTS.md) — new product DB, mocked PDS calls, direct commits to `main`, etc.?
+  - For data-model PRs: does the change match [docs/lexicons.md](docs/lexicons.md) exactly? If the PR diverges from the doc, either the doc or the PR is wrong — flag it.
+  - Security: any new attack surface, any credential mishandling, any unauthenticated write path.
+  - Failure modes: what happens when the PDS is down, when a record is malformed, when the user logs out mid-operation? Is there any error handling, and if so, is it at the right layer (boundary, not everywhere)?
+  - Simplicity: could this be half the code? Is there speculative abstraction? Are there fallbacks for scenarios that can't happen?
+- **Reviewer behavior:** be direct, specific, and cite file:line. Push back on the authoring agent. Do not soften criticism. If the PR is fine, say so plainly — don't invent problems to justify the review.
+- **Resolution:** the authoring agent responds to each reviewer comment with either a fix or a justification for not fixing. If the reviewer and author disagree and can't resolve it in one back-and-forth, **halt and escalate to the human** — don't loop indefinitely.
+- **When to skip review:** never skip it on a PR with logic changes. Pure docs PRs (typo fixes, link updates) can go without review but must say so in the PR description. Config-only PRs (`.github/`, `package.json` tweaks) should still get review since those often have subtle blast radius.
+
+The goal is not ceremony. The goal is: two independent agents looked at this, and the one whose job was to find problems didn't find any it cared about.
+
 ## Repo layout (inherited from statusphere starter)
 
 - [app/](app/) — Next.js app router, routes and server actions
