@@ -1,0 +1,9 @@
+{
+  "$type": "com.smellgate.description",
+  "perfume": {
+    "uri": "at://did:plc:fixturecuratorxxxxxxxxxx/com.smellgate.perfume/3kxyz222bbb",
+    "cid": "bafyreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku"
+  },
+  "body": 42,
+  "createdAt": "2024-02-13T09:30:00.000Z"
+}

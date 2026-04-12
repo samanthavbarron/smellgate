@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Generated lexicon bindings from `pnpm build:lex`. The ts-lex codegen
+    // intentionally uses `as any` casts on circular ref initializers; these
+    // files are never hand-edited, so linting them is noise.
+    "lib/lexicons/**",
   ]),
 ]);
 

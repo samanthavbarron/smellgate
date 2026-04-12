@@ -1,9 +1,14 @@
 {
   "version": 1,
   "lexicons": [
+    "com.atproto.repo.strongRef",
     "xyz.statusphere.status"
   ],
   "resolutions": {
+    "com.atproto.repo.strongRef": {
+      "uri": "at://did:plc:6msi3pj7krzih5qxqtryxlzw/com.atproto.lexicon.schema/com.atproto.repo.strongRef",
+      "cid": "bafyreifrkdbnkvfjujntdaeigolnrjj3srrs53tfixjhmacclps72qlov4"
+    },
     "xyz.statusphere.status": {
       "uri": "at://did:plc:cgglmcdlre7x4iknufqyajbo/com.atproto.lexicon.schema/xyz.statusphere.status",
       "cid": "bafyreifmakho22qjptfycciab2gm6hyl4yeav7b2sp6us2ndotavqn4qgi"
