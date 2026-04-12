@@ -12,6 +12,8 @@
     "start": "pnpm migrate && next start --port ${PORT-3000}",
     "migrate": "tsx scripts/migrate.ts",
     "gen-key": "tsx scripts/gen-key.ts",
+    "seed:catalog": "tsx scripts/seed-catalog.ts",
+    "seed:catalog:dry-run": "tsx scripts/seed-catalog.ts --dry-run",
     "lint": "eslint",
     "typecheck": "pnpm build:lex && tsc --noEmit",
     "test": "vitest run tests/unit",
