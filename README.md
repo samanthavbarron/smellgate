@@ -1,27 +1,26 @@
-# AT Protocol "Statusphere" Example App
+# smellgate
 
-An example application covering:
+A letterboxd-style app for perfumes, built on [ATProto](https://atproto.com). Log perfumes you own, write reviews (with ratings for sillage and longevity), contribute community descriptions, and browse other users' shelves.
 
-- Signin via OAuth
-- Fetch information about users (profiles)
-- Listen to the network firehose for new data
-- Publish data on the user's account using a custom schema
+See [PLAN.md](PLAN.md) for the product vision and [AGENTS.md](AGENTS.md) for how we build it.
 
-See https://atproto.com/guides/applications for a guide through the codebase.
+## Status
 
-This project uses [Next.js](https://nextjs.org) as a server framework and [Tap](https://github.com/bluesky-social/indigo/blob/main/cmd/tap/README.md) for syncing data from the Atmosphere.
-
-This is a revamp of the original Statusphere example app which can be found on the [statusphere-og](https://github.com/bluesky-social/statusphere-example-app/tree/statusphere-og) branch.
+Very early. The repo is currently scaffolding — we're working through Phase 0 (foundations) before any feature work lands. Track progress via [GitHub issues](https://github.com/samanthavbarron/smellgate/issues).
 
 ## Getting Started
 
 ```sh
-git clone https://github.com/bluesky-social/statusphere-example-app.git
-cd statusphere-example-app
+git clone https://github.com/samanthavbarron/smellgate.git
+cd smellgate
 cp env.template .env.local
 pnpm install
 pnpm dev
 # Navigate to http://127.0.0.1:3000
 ```
 
-To read data from the network, you'll need an instance of Tap running. Find instructions for getting set up by checking out the [Statusphere tutorial](https://atproto.com/guides/applications) or the [Tap repository](https://github.com/bluesky-social/indigo/blob/main/cmd/tap/README.md).
+To read data from the network, you'll need an instance of [Tap](https://github.com/bluesky-social/indigo/blob/main/cmd/tap/README.md) running.
+
+## Credits
+
+Bootstrapped from the [`bluesky-social/statusphere-example-app`](https://github.com/bluesky-social/statusphere-example-app) starter.

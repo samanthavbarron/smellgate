@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Statusphere",
-  description: "Your status in the Atmosphere",
+  title: "smellgate",
+  description: "A letterboxd-style app for perfumes, built on ATProto",
 };
 
 export default function RootLayout({
