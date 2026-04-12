@@ -2,6 +2,9 @@
   "name": "smellgate",
   "version": "0.0.1",
   "private": true,
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "pnpm migrate && next dev",
     "build:lex": "ts-lex build --importExt=\"\" --out=./lib/lexicons --override",
@@ -10,6 +13,7 @@
     "migrate": "tsx scripts/migrate.ts",
     "gen-key": "tsx scripts/gen-key.ts",
     "lint": "eslint",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run tests/unit",
     "test:integration": "vitest run tests/integration"
   },
