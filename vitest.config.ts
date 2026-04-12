@@ -8,6 +8,6 @@ import { defineConfig } from 'vitest/config'
 // targets — no workspace/projects machinery needed yet.
 export default defineConfig({
   test: {
-    include: ['tests/**/*.test.ts'],
+    include: ['tests/{unit,integration}/**/*.test.ts'],
   },
 })
