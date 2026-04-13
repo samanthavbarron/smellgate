@@ -41,6 +41,7 @@ import type {
 } from "@/lib/db";
 import { getSession } from "@/lib/auth/session";
 import { getAccountHandle } from "@/lib/db/queries";
+import { VoteButtons } from "@/components/forms/VoteButtons";
 
 type Params = Promise<{ uri: string }>;
 
@@ -327,45 +328,29 @@ function DescriptionCard({
 }) {
   return (
     <article className="flex gap-4 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
-      {/* Score gutter */}
-      <div className="flex shrink-0 flex-col items-center gap-0.5 text-xs text-zinc-500 dark:text-zinc-500">
-        {signedIn ? (
-          // Vote actions are Phase 3 write-path territory; no server
-          // action wired to the UI yet. Rendered as stubs so the shape
-          // is visible and the PR doesn't bit-rot. See #67 PR body.
-          <button
-            type="button"
-            title="Vote UI is stubbed — wiring lives in Phase 4.D"
-            className="rounded hover:text-amber-700 disabled:cursor-not-allowed dark:hover:text-amber-400"
-            disabled
-          >
-            ▲
-          </button>
-        ) : (
+      {/* Score gutter — wired to `<VoteButtons>` in Phase 4.D (#69). */}
+      {signedIn ? (
+        <VoteButtons
+          descriptionUri={description.uri}
+          score={description.score}
+          upCount={description.up_count}
+          downCount={description.down_count}
+        />
+      ) : (
+        <div className="flex shrink-0 flex-col items-center gap-0.5 text-xs text-zinc-500 dark:text-zinc-500">
           <span aria-hidden>▲</span>
-        )}
-        <span
-          className={
-            description.score > 0
-              ? "font-semibold text-amber-700 dark:text-amber-400"
-              : "font-semibold text-zinc-700 dark:text-zinc-300"
-          }
-        >
-          {description.score}
-        </span>
-        {signedIn ? (
-          <button
-            type="button"
-            title="Vote UI is stubbed — wiring lives in Phase 4.D"
-            className="rounded hover:text-amber-700 disabled:cursor-not-allowed dark:hover:text-amber-400"
-            disabled
+          <span
+            className={
+              description.score > 0
+                ? "font-semibold text-amber-700 dark:text-amber-400"
+                : "font-semibold text-zinc-700 dark:text-zinc-300"
+            }
           >
-            ▼
-          </button>
-        ) : (
+            {description.score}
+          </span>
           <span aria-hidden>▼</span>
-        )}
-      </div>
+        </div>
+      )}
       <div className="min-w-0 flex-1">
         <div className="text-xs text-zinc-500 dark:text-zinc-500">
           @{authorHandle} · +{description.up_count} / −{description.down_count}
