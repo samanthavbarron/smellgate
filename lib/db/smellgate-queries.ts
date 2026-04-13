@@ -467,3 +467,206 @@ export async function getResolutionForSubmission(
     .executeTakeFirst();
   return row ?? null;
 }
+
+/**
+ * Fetch a single submission row by URI, with its note tags attached.
+ * Used by the curator approve flow when constructing the canonical
+ * perfume record from the submission's fields.
+ */
+export async function getPerfumeSubmissionByUri(
+  db: Db,
+  uri: string,
+): Promise<(SmellgatePerfumeSubmissionTable & { notes: string[] }) | null> {
+  const row = await db
+    .selectFrom("smellgate_perfume_submission")
+    .selectAll()
+    .where("uri", "=", uri)
+    .executeTakeFirst();
+  if (!row) return null;
+  const noteRows = await db
+    .selectFrom("smellgate_perfume_submission_note")
+    .select("note")
+    .where("submission_uri", "=", uri)
+    .execute();
+  return { ...row, notes: noteRows.map((n) => n.note) };
+}
+
+// ---------------------------------------------------------------------------
+// Pending-record discovery for the rewrite mechanic (Phase 3.C).
+//
+// A user record (shelf_item / review / description) is "pending" when
+// its `perfume_uri` does not resolve to a canonical perfume row but
+// DOES resolve to a submission row — i.e. the author wrote a record
+// pointing at a `com.smellgate.perfumeSubmission` URI rather than a
+// `com.smellgate.perfume` URI, per docs/lexicons.md §"The submission →
+// canonical flow" step 3.
+//
+// Pending status is computed on the fly (no schema change) by joining
+// `perfume_uri` against `smellgate_perfume_submission`. The rewrite
+// mechanic additionally joins against
+// `smellgate_perfume_submission_resolution` to find the pending records
+// that are ready to be repointed at a canonical perfume: those whose
+// submission has been approved or marked duplicate, AND the resolution
+// carries a non-null `perfume` strongRef. Rejections are deliberately
+// excluded — on rejection the user is prompted by the UI, not rewritten
+// automatically.
+// ---------------------------------------------------------------------------
+
+export interface PendingRewrite {
+  /** AT-URI of the user's pending record (shelfItem / review / description). */
+  recordUri: string;
+  /** Content CID currently stored in the cache for the pending record. */
+  recordCid: string;
+  /** Submission URI the record currently points at. */
+  submissionUri: string;
+  /** Canonical perfume URI to rewrite to. */
+  newPerfumeUri: string;
+  /** Canonical perfume CID to rewrite to. */
+  newPerfumeCid: string;
+  /** Resolution that justified the rewrite. */
+  resolutionUri: string;
+  /** `"approved"` or `"duplicate"` — never `"rejected"`. */
+  decision: "approved" | "duplicate";
+}
+
+async function selectPendingShelfItems(
+  db: Db,
+  authorDid: string,
+): Promise<PendingRewrite[]> {
+  const rows = await db
+    .selectFrom("smellgate_shelf_item as u")
+    .innerJoin(
+      "smellgate_perfume_submission as s",
+      "s.uri",
+      "u.perfume_uri",
+    )
+    .innerJoin(
+      "smellgate_perfume_submission_resolution as r",
+      "r.submission_uri",
+      "s.uri",
+    )
+    .where("u.author_did", "=", authorDid)
+    .where("r.perfume_uri", "is not", null)
+    .where("r.decision", "in", ["approved", "duplicate"])
+    .select([
+      "u.uri as recordUri",
+      "u.cid as recordCid",
+      "s.uri as submissionUri",
+      "r.perfume_uri as newPerfumeUri",
+      "r.perfume_cid as newPerfumeCid",
+      "r.uri as resolutionUri",
+      "r.decision as decision",
+    ])
+    .execute();
+  return rows.map((r) => ({
+    recordUri: r.recordUri,
+    recordCid: r.recordCid,
+    submissionUri: r.submissionUri,
+    newPerfumeUri: r.newPerfumeUri!,
+    newPerfumeCid: r.newPerfumeCid!,
+    resolutionUri: r.resolutionUri,
+    decision: r.decision as "approved" | "duplicate",
+  }));
+}
+
+async function selectPendingReviews(
+  db: Db,
+  authorDid: string,
+): Promise<PendingRewrite[]> {
+  const rows = await db
+    .selectFrom("smellgate_review as u")
+    .innerJoin(
+      "smellgate_perfume_submission as s",
+      "s.uri",
+      "u.perfume_uri",
+    )
+    .innerJoin(
+      "smellgate_perfume_submission_resolution as r",
+      "r.submission_uri",
+      "s.uri",
+    )
+    .where("u.author_did", "=", authorDid)
+    .where("r.perfume_uri", "is not", null)
+    .where("r.decision", "in", ["approved", "duplicate"])
+    .select([
+      "u.uri as recordUri",
+      "u.cid as recordCid",
+      "s.uri as submissionUri",
+      "r.perfume_uri as newPerfumeUri",
+      "r.perfume_cid as newPerfumeCid",
+      "r.uri as resolutionUri",
+      "r.decision as decision",
+    ])
+    .execute();
+  return rows.map((r) => ({
+    recordUri: r.recordUri,
+    recordCid: r.recordCid,
+    submissionUri: r.submissionUri,
+    newPerfumeUri: r.newPerfumeUri!,
+    newPerfumeCid: r.newPerfumeCid!,
+    resolutionUri: r.resolutionUri,
+    decision: r.decision as "approved" | "duplicate",
+  }));
+}
+
+async function selectPendingDescriptions(
+  db: Db,
+  authorDid: string,
+): Promise<PendingRewrite[]> {
+  const rows = await db
+    .selectFrom("smellgate_description as u")
+    .innerJoin(
+      "smellgate_perfume_submission as s",
+      "s.uri",
+      "u.perfume_uri",
+    )
+    .innerJoin(
+      "smellgate_perfume_submission_resolution as r",
+      "r.submission_uri",
+      "s.uri",
+    )
+    .where("u.author_did", "=", authorDid)
+    .where("r.perfume_uri", "is not", null)
+    .where("r.decision", "in", ["approved", "duplicate"])
+    .select([
+      "u.uri as recordUri",
+      "u.cid as recordCid",
+      "s.uri as submissionUri",
+      "r.perfume_uri as newPerfumeUri",
+      "r.perfume_cid as newPerfumeCid",
+      "r.uri as resolutionUri",
+      "r.decision as decision",
+    ])
+    .execute();
+  return rows.map((r) => ({
+    recordUri: r.recordUri,
+    recordCid: r.recordCid,
+    submissionUri: r.submissionUri,
+    newPerfumeUri: r.newPerfumeUri!,
+    newPerfumeCid: r.newPerfumeCid!,
+    resolutionUri: r.resolutionUri,
+    decision: r.decision as "approved" | "duplicate",
+  }));
+}
+
+/**
+ * Find all pending records for a given user, partitioned by collection.
+ * Returns the three user-record collections the rewrite mechanic
+ * touches. Votes/comments are out of scope — their strongRefs point at
+ * descriptions/reviews, not perfumes/submissions.
+ */
+export async function getPendingRecordsForUser(
+  db: Db,
+  authorDid: string,
+): Promise<{
+  shelfItems: PendingRewrite[];
+  reviews: PendingRewrite[];
+  descriptions: PendingRewrite[];
+}> {
+  const [shelfItems, reviews, descriptions] = await Promise.all([
+    selectPendingShelfItems(db, authorDid),
+    selectPendingReviews(db, authorDid),
+    selectPendingDescriptions(db, authorDid),
+  ]);
+  return { shelfItems, reviews, descriptions };
+}
