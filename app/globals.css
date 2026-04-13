@@ -1,26 +1,21 @@
+/*
+ * smellgate UI conventions (Phase 4.A). See docs/ui.md for the full
+ * writeup. Short version:
+ *
+ * - Color: Tailwind's zinc-* scale for neutral text / borders /
+ *   surfaces. ONE accent: amber-* (amber-700 in light, amber-400 in
+ *   dark). No other accent colors. Do not introduce blue, green, rose,
+ *   etc. — use zinc or amber.
+ * - Typography: `font-sans` (system default — no web-font imports).
+ *   Headings are `font-semibold tracking-tight`; body copy is default
+ *   weight. Sizes: `text-4xl` for page title, `text-lg` for section
+ *   heads, `text-sm` for body, `text-xs` for metadata and chips.
+ * - Surfaces: white on `bg-zinc-50` in light; `bg-zinc-900` on
+ *   `bg-zinc-950` in dark. Borders are `border-zinc-200` / `-800`.
+ * - Radii: `rounded-md` for buttons, `rounded-lg` for cards,
+ *   `rounded-full` for pills/chips.
+ * - Do NOT add shared component primitives in components/ui/. We use
+ *   plain Tailwind classes inline — the Phase 4 issues will each add
+ *   a small number of page-level components, not a design system.
+ */
 @import "tailwindcss";
-
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
-}

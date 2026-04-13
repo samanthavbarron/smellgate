@@ -1,111 +1,192 @@
-import { getSession } from "@/lib/auth/session";
+/**
+ * Home page (Phase 4.A).
+ *
+ * Server component. Reads directly from the Phase 2.B read cache via
+ * `getRecentPerfumes` / `getRecentReviews`. No client-side fetching.
+ *
+ * Tiles link to `/perfume/<encoded uri>` even though that route does
+ * not exist yet — Phase 4.B builds it. The link will 404 for now; that
+ * is expected and intentional so we don't have to retrofit links later.
+ */
+import Link from "next/link";
+import { getDb } from "@/lib/db";
 import {
-  getAccountStatus,
-  getRecentStatuses,
-  getTopStatuses,
-  getAccountHandle,
-} from "@/lib/db/queries";
+  getRecentPerfumes,
+  getRecentReviews,
+  type PerfumeWithNotes,
+  type ReviewWithPerfume,
+} from "@/lib/db/smellgate-queries";
+import { getSession } from "@/lib/auth/session";
 import { LoginForm } from "@/components/LoginForm";
-import { LogoutButton } from "@/components/LogoutButton";
-import { StatusPicker } from "@/components/StatusPicker";
 
 export default async function Home() {
-  const session = await getSession();
-  const [statuses, topStatuses, accountStatus, accountHandle] =
-    await Promise.all([
-      getRecentStatuses(),
-      getTopStatuses(),
-      session ? getAccountStatus(session.did) : null,
-      session ? getAccountHandle(session.did) : null,
-    ]);
+  const db = getDb();
+  const [session, perfumes, reviews] = await Promise.all([
+    getSession(),
+    getRecentPerfumes(db, { limit: 12 }),
+    getRecentReviews(db, { limit: 6 }),
+  ]);
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 dark:bg-zinc-950">
-      <main className="w-full max-w-md mx-auto p-8">
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-zinc-900 dark:text-zinc-100 mb-2">
-            smellgate
-          </h1>
-          <p className="text-zinc-600 dark:text-zinc-400">
-            A letterboxd-style app for perfumes, built on ATProto
-          </p>
-        </div>
+    <div className="space-y-12">
+      <section className="text-center">
+        <h1 className="text-4xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-100">
+          smellgate
+        </h1>
+        <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
+          Letterboxd for perfume. Built on ATProto.
+        </p>
+      </section>
 
-        {session ? (
-          <div className="bg-white dark:bg-zinc-900 rounded-lg border border-zinc-200 dark:border-zinc-800 p-6 mb-6">
-            <div className="flex items-center justify-between mb-4">
-              <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                Signed in as @{accountHandle ?? session.did}
-              </p>
-              <LogoutButton />
-            </div>
-            <StatusPicker currentStatus={accountStatus?.status} />
-          </div>
+      <div
+        role="note"
+        className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200"
+      >
+        <strong className="font-medium">Synthetic catalog.</strong> The perfumes
+        shown here are a fictional seed catalog for development. Nothing in this
+        list exists in real life — names, houses, creators, and notes are all
+        invented.
+      </div>
+
+      {!session && (
+        <section
+          id="sign-in"
+          className="mx-auto max-w-md rounded-lg border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900"
+        >
+          <h2 className="mb-3 text-sm font-medium text-zinc-500 dark:text-zinc-400">
+            Sign in with your ATProto handle
+          </h2>
+          <LoginForm />
+        </section>
+      )}
+
+      <section>
+        <div className="mb-4 flex items-baseline justify-between">
+          <h2 className="text-lg font-semibold tracking-tight text-zinc-900 dark:text-zinc-100">
+            Recent perfumes
+          </h2>
+          <span className="text-xs text-zinc-500 dark:text-zinc-500">
+            {perfumes.length === 0
+              ? "nothing indexed yet"
+              : `${perfumes.length} shown`}
+          </span>
+        </div>
+        {perfumes.length === 0 ? (
+          <EmptyState>
+            The cache is empty. Seed it with{" "}
+            <code className="rounded bg-zinc-100 px-1 py-0.5 text-xs dark:bg-zinc-800">
+              pnpm dev:seed-cache
+            </code>
+            , or wait for the firehose dispatcher to index your first records.
+          </EmptyState>
         ) : (
-          <div className="bg-white dark:bg-zinc-900 rounded-lg border border-zinc-200 dark:border-zinc-800 p-6 mb-6">
-            <LoginForm />
-          </div>
+          <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {perfumes.map((p) => (
+              <li key={p.uri}>
+                <PerfumeTile perfume={p} />
+              </li>
+            ))}
+          </ul>
         )}
+      </section>
 
-        {topStatuses.length > 0 && (
-          <div className="bg-white dark:bg-zinc-900 rounded-lg border border-zinc-200 dark:border-zinc-800 p-6 mb-6">
-            <h3 className="text-sm font-medium text-zinc-500 dark:text-zinc-400 mb-3">
-              Top
-            </h3>
-            <div className="flex flex-wrap gap-2">
-              {topStatuses.map((s) => (
-                <span
-                  key={s.status}
-                  className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-zinc-100 dark:bg-zinc-800 text-sm"
-                >
-                  <span className="text-lg">{s.status}</span>
-                  <span className="text-zinc-500 dark:text-zinc-400">
-                    {String(s.count)}
-                  </span>
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
-
-        <div className="bg-white dark:bg-zinc-900 rounded-lg border border-zinc-200 dark:border-zinc-800 p-6">
-          <h3 className="text-sm font-medium text-zinc-500 dark:text-zinc-400 mb-3">
-            Recent
-          </h3>
-          {statuses.length === 0 ? (
-            <p className="text-zinc-500 dark:text-zinc-400 text-sm">
-              Nothing here yet.
-            </p>
-          ) : (
-            <ul className="space-y-3">
-              {statuses.map((s) => (
-                <li key={s.uri} className="flex items-center gap-3">
-                  <span className="text-2xl">{s.status}</span>
-                  <span className="text-zinc-600 dark:text-zinc-400 text-sm">
-                    @{s.handle}
-                  </span>
-                  <span className="text-zinc-400 dark:text-zinc-500 text-xs ml-auto">
-                    {timeAgo(s.createdAt)}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
+      <section>
+        <div className="mb-4 flex items-baseline justify-between">
+          <h2 className="text-lg font-semibold tracking-tight text-zinc-900 dark:text-zinc-100">
+            Recent reviews
+          </h2>
+          <span className="text-xs text-zinc-500 dark:text-zinc-500">
+            {reviews.length === 0 ? "no reviews yet" : `${reviews.length} shown`}
+          </span>
         </div>
-      </main>
+        {reviews.length === 0 ? (
+          <EmptyState>
+            Nobody has posted a review yet. Reviews live in users&rsquo; PDSs and
+            are indexed into the local cache when the firehose sees them.
+          </EmptyState>
+        ) : (
+          <ul className="space-y-3">
+            {reviews.map((r) => (
+              <li key={r.uri}>
+                <ReviewRow review={r} />
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
     </div>
   );
 }
 
-function timeAgo(dateString: string): string {
-  const now = Date.now();
-  const then = new Date(dateString).getTime();
-  const seconds = Math.floor((now - then) / 1000);
-  if (seconds < 60) return "just now";
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h`;
-  const days = Math.floor(hours / 24);
-  return `${days}d`;
+function PerfumeTile({ perfume }: { perfume: PerfumeWithNotes }) {
+  const href = `/perfume/${encodeURIComponent(perfume.uri)}`;
+  const topNotes = perfume.notes.slice(0, 3);
+  return (
+    <Link
+      href={href}
+      className="block h-full rounded-lg border border-zinc-200 bg-white p-4 transition-colors hover:border-amber-600 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-amber-500"
+    >
+      <div className="text-base font-medium text-zinc-900 dark:text-zinc-100">
+        {perfume.name}
+      </div>
+      <div className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
+        {perfume.house}
+        {perfume.creator ? ` · ${perfume.creator}` : ""}
+        {perfume.release_year ? ` · ${perfume.release_year}` : ""}
+      </div>
+      {topNotes.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {topNotes.map((note) => (
+            <span
+              key={note}
+              className="inline-flex items-center rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
+            >
+              {note}
+            </span>
+          ))}
+        </div>
+      )}
+    </Link>
+  );
+}
+
+function ReviewRow({ review }: { review: ReviewWithPerfume }) {
+  const href = review.perfume
+    ? `/perfume/${encodeURIComponent(review.perfume.uri)}`
+    : "#";
+  const snippet =
+    review.body.length > 200 ? `${review.body.slice(0, 200).trimEnd()}…` : review.body;
+  return (
+    <Link
+      href={href}
+      className="block rounded-lg border border-zinc-200 bg-white p-4 transition-colors hover:border-amber-600 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-amber-500"
+    >
+      <div className="flex items-baseline justify-between gap-4">
+        <div className="min-w-0">
+          <div className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">
+            {review.perfume?.name ?? "unknown perfume"}
+          </div>
+          {review.perfume && (
+            <div className="truncate text-xs text-zinc-500 dark:text-zinc-400">
+              {review.perfume.house}
+            </div>
+          )}
+        </div>
+        <div className="shrink-0 text-sm font-semibold text-amber-700 dark:text-amber-400">
+          {review.rating}/10
+        </div>
+      </div>
+      {snippet && (
+        <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">{snippet}</p>
+      )}
+    </Link>
+  );
+}
+
+function EmptyState({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="rounded-lg border border-dashed border-zinc-300 bg-white p-6 text-sm text-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400">
+      {children}
+    </div>
+  );
 }
