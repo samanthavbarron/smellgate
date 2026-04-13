@@ -162,7 +162,9 @@ Design conventions documented in [docs/ui.md](docs/ui.md) — plain Tailwind inl
 
 ### 🟦 Phase 5 — Deployment (NOT STARTED)
 
-Prerequisites tracked as P0 blockers in issue #86: bootstrap curator account (#1), fix seed-catalog OAuth wrapper (#40), wire hosted OAuth metadata (#85). Once those are clear, pick a host. **Not Cloudflare Workers** — the Tap consumer needs a long-running process. Fly.io, Railway, or a small VM are the candidates. Preview deploys via `.github/workflows/`.
+Deploy target: **Fly.io**. See [docs/deployment.md](docs/deployment.md) for the rationale, env var shape, DNS requirements, and rollback story.
+
+Prerequisites tracked as P0 blockers in issue #86: bootstrap curator account (#1), fix seed-catalog OAuth wrapper (#40), wire hosted OAuth metadata (#85). The host needs to support a long-running Next.js process, a persistent Tap firehose consumer, and a SQLite read cache on a durable volume — that shortlist is what ruled **out Cloudflare Workers** (Tap consumer doesn't fit the request/response model) and ruled *in* Fly.io. Preview deploys via `.github/workflows/deploy.yml` (tracked in #103).
 
 ### Phase 6+ — Later
 
