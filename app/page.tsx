@@ -13,11 +13,11 @@ import { getDb } from "@/lib/db";
 import {
   getRecentPerfumes,
   getRecentReviews,
-  type PerfumeWithNotes,
   type ReviewWithPerfume,
 } from "@/lib/db/smellgate-queries";
 import { getSession } from "@/lib/auth/session";
 import { LoginForm } from "@/components/LoginForm";
+import { PerfumeTile } from "@/components/PerfumeTile";
 
 export default async function Home() {
   const db = getDb();
@@ -115,38 +115,6 @@ export default async function Home() {
         )}
       </section>
     </div>
-  );
-}
-
-function PerfumeTile({ perfume }: { perfume: PerfumeWithNotes }) {
-  const href = `/perfume/${encodeURIComponent(perfume.uri)}`;
-  const topNotes = perfume.notes.slice(0, 3);
-  return (
-    <Link
-      href={href}
-      className="block h-full rounded-lg border border-zinc-200 bg-white p-4 transition-colors hover:border-amber-600 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-amber-500"
-    >
-      <div className="text-base font-medium text-zinc-900 dark:text-zinc-100">
-        {perfume.name}
-      </div>
-      <div className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
-        {perfume.house}
-        {perfume.creator ? ` · ${perfume.creator}` : ""}
-        {perfume.release_year ? ` · ${perfume.release_year}` : ""}
-      </div>
-      {topNotes.length > 0 && (
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          {topNotes.map((note) => (
-            <span
-              key={note}
-              className="inline-flex items-center rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
-            >
-              {note}
-            </span>
-          ))}
-        </div>
-      )}
-    </Link>
   );
 }
 
