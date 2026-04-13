@@ -168,6 +168,16 @@ export interface CommentOnReviewInput {
   body: string;
 }
 
+export interface SubmitPerfumeInput {
+  name: string;
+  house: string;
+  creator?: string;
+  releaseYear?: number;
+  notes: string[];
+  description?: string;
+  rationale?: string;
+}
+
 export interface ActionResult {
   uri: string;
 }
@@ -378,6 +388,101 @@ export async function commentOnReviewAction(
   const res = await lexClient.create(com.smellgate.comment.main, {
     subject: strongRef(subjectUri, cid),
     body,
+    createdAt: nowDatetime(),
+  });
+  return { uri: res.uri };
+}
+
+/**
+ * Write a `com.smellgate.perfumeSubmission` record to the user's PDS.
+ *
+ * Any authenticated user may submit — there is NO curator gate here.
+ * The submission lives in the user's own repo and is resolved later by
+ * a curator-authored `perfumeSubmissionResolution`.
+ *
+ * Validation:
+ * - `name`, `house` non-empty strings.
+ * - `notes` non-empty array; each entry lowercased + trimmed and
+ *   non-empty after trim. Per docs/lexicons.md: "Normalized lowercase."
+ *   Duplicates are de-duplicated in order.
+ * - `creator`, `description`, `rationale` (when present) non-empty.
+ * - `releaseYear` (when present) a finite integer.
+ *
+ * We intentionally do not touch the cache here. Unlike the
+ * Phase 3.B actions we have no strongRef to validate against —
+ * a submission is a leaf record.
+ */
+export async function submitPerfumeAction(
+  _db: Db,
+  session: OAuthSession,
+  input: SubmitPerfumeInput,
+): Promise<ActionResult> {
+  const name = requireString(input.name, "name");
+  if (name.trim().length === 0) bad("name must not be empty");
+  const house = requireString(input.house, "house");
+  if (house.trim().length === 0) bad("house must not be empty");
+
+  if (!Array.isArray(input.notes) || input.notes.length === 0) {
+    bad("notes must be a non-empty array");
+  }
+  const seen = new Set<string>();
+  const notes: string[] = [];
+  for (const raw of input.notes) {
+    if (typeof raw !== "string") bad("notes must be an array of strings");
+    const normalized = raw.trim().toLowerCase();
+    if (normalized.length === 0) bad("notes must not contain empty strings");
+    if (seen.has(normalized)) continue;
+    seen.add(normalized);
+    notes.push(normalized);
+  }
+
+  let creator: string | undefined;
+  if (input.creator !== undefined) {
+    if (typeof input.creator !== "string" || input.creator.trim().length === 0) {
+      bad("creator must be a non-empty string when provided");
+    }
+    creator = input.creator;
+  }
+
+  let releaseYear: number | undefined;
+  if (input.releaseYear !== undefined) {
+    if (!isFiniteInt(input.releaseYear)) {
+      bad("releaseYear must be an integer when provided");
+    }
+    releaseYear = input.releaseYear;
+  }
+
+  let description: string | undefined;
+  if (input.description !== undefined) {
+    if (
+      typeof input.description !== "string" ||
+      input.description.trim().length === 0
+    ) {
+      bad("description must be a non-empty string when provided");
+    }
+    description = input.description;
+  }
+
+  let rationale: string | undefined;
+  if (input.rationale !== undefined) {
+    if (
+      typeof input.rationale !== "string" ||
+      input.rationale.trim().length === 0
+    ) {
+      bad("rationale must be a non-empty string when provided");
+    }
+    rationale = input.rationale;
+  }
+
+  const lexClient = new Client(session);
+  const res = await lexClient.create(com.smellgate.perfumeSubmission.main, {
+    name,
+    house,
+    creator,
+    releaseYear,
+    notes,
+    description,
+    rationale,
     createdAt: nowDatetime(),
   });
   return { uri: res.uri };
