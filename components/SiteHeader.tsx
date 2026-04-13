@@ -43,7 +43,7 @@ export function SiteHeader({ signedIn, handle, isCurator }: SiteHeaderProps) {
           </Link>
           {signedIn && (
             <Link
-              href="/profile"
+              href="/profile/me"
               className="text-zinc-600 hover:text-amber-700 dark:text-zinc-400 dark:hover:text-amber-400"
             >
               Profile

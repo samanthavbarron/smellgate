@@ -115,6 +115,58 @@ async function loadNotesByPerfume(
   return byUri;
 }
 
+/**
+ * Build the "most recent vote per (author, subject)" tally map for a
+ * set of description URIs. Shared by `getDescriptionsForPerfume` and
+ * `getUserDescriptions`. Returns an empty map if the input is empty
+ * so callers don't have to special-case it.
+ *
+ * Implementation: for each candidate vote row, require that no other
+ * vote from the same author on the same subject has a strictly later
+ * `indexed_at`. This matches the Phase 2.B rule from
+ * docs/lexicons.md: "One vote per (user, description) is enforced at
+ * the read layer, keeping each author's most recent vote".
+ */
+async function loadVoteTallies(
+  db: Db,
+  subjectUris: string[],
+): Promise<Map<string, { up: number; down: number }>> {
+  const byUri = new Map<string, { up: number; down: number }>();
+  if (subjectUris.length === 0) return byUri;
+
+  const rows = await db
+    .selectFrom("smellgate_vote as v")
+    .select([
+      "v.subject_uri",
+      "v.direction",
+      (eb) => eb.fn.countAll<number>().as("count"),
+    ])
+    .where("v.subject_uri", "in", subjectUris)
+    .where((eb) =>
+      eb.not(
+        eb.exists(
+          eb
+            .selectFrom("smellgate_vote as v2")
+            .select(sql<number>`1`.as("one"))
+            .whereRef("v2.author_did", "=", "v.author_did")
+            .whereRef("v2.subject_uri", "=", "v.subject_uri")
+            .whereRef("v2.indexed_at", ">", "v.indexed_at"),
+        ),
+      ),
+    )
+    .groupBy(["v.subject_uri", "v.direction"])
+    .execute();
+
+  for (const row of rows) {
+    const prev = byUri.get(row.subject_uri) ?? { up: 0, down: 0 };
+    const count = Number(row.count);
+    if (row.direction === "up") prev.up += count;
+    else if (row.direction === "down") prev.down += count;
+    byUri.set(row.subject_uri, prev);
+  }
+  return byUri;
+}
+
 async function attachNotes(
   db: Db,
   perfumes: SmellgatePerfumeTable[],
@@ -318,13 +370,25 @@ export async function getUserReviews(
     .execute();
 }
 
+/**
+ * Descriptions authored by a user, newest-first, each enriched with
+ * up/down/score. Shares the "most recent vote per (author, subject)"
+ * dedupe rule with `getDescriptionsForPerfume` via `loadVoteTallies`.
+ *
+ * The ordering here is `indexed_at DESC` (a chronological feed on the
+ * profile page), NOT `score DESC` — a profile section is a list of
+ * what *this* user wrote, not a community ranking, so newest-first is
+ * the intuitive order. `getDescriptionsForPerfume` sorts by score
+ * because the consumer is a ranked list of community takes on one
+ * perfume.
+ */
 export async function getUserDescriptions(
   db: Db,
   did: string,
   opts?: PaginationOpts,
-): Promise<SmellgateDescriptionTable[]> {
+): Promise<DescriptionWithVotes[]> {
   const { limit, offset } = paged(opts);
-  return db
+  const descriptions = await db
     .selectFrom("smellgate_description")
     .selectAll()
     .where("author_did", "=", did)
@@ -332,6 +396,15 @@ export async function getUserDescriptions(
     .limit(limit)
     .offset(offset)
     .execute();
+  if (descriptions.length === 0) return [];
+  const tallyByUri = await loadVoteTallies(
+    db,
+    descriptions.map((d) => d.uri),
+  );
+  return descriptions.map((d) => {
+    const t = tallyByUri.get(d.uri) ?? { up: 0, down: 0 };
+    return { ...d, up_count: t.up, down_count: t.down, score: t.up - t.down };
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -380,47 +453,10 @@ export async function getDescriptionsForPerfume(
     .execute();
   if (descriptions.length === 0) return [];
 
-  const subjectUris = descriptions.map((d) => d.uri);
-
-  // Most recent vote per (author_did, subject_uri): for each
-  // candidate row, require that no other vote from the same author on
-  // the same subject has a strictly later indexed_at. `indexed_at` is
-  // unix milliseconds; ties on the same author+subject+indexed_at are
-  // vanishingly unlikely and would only arise if the dispatcher
-  // indexed two vote *records* in the same millisecond from the same
-  // author, which Phase 2.A's upsert path already collapses via the
-  // `uri` primary key for the common "author re-votes" case.
-  const tallies = await db
-    .selectFrom("smellgate_vote as v")
-    .select([
-      "v.subject_uri",
-      "v.direction",
-      (eb) => eb.fn.countAll<number>().as("count"),
-    ])
-    .where("v.subject_uri", "in", subjectUris)
-    .where((eb) =>
-      eb.not(
-        eb.exists(
-          eb
-            .selectFrom("smellgate_vote as v2")
-            .select(sql<number>`1`.as("one"))
-            .whereRef("v2.author_did", "=", "v.author_did")
-            .whereRef("v2.subject_uri", "=", "v.subject_uri")
-            .whereRef("v2.indexed_at", ">", "v.indexed_at"),
-        ),
-      ),
-    )
-    .groupBy(["v.subject_uri", "v.direction"])
-    .execute();
-
-  const tallyByUri = new Map<string, { up: number; down: number }>();
-  for (const row of tallies) {
-    const prev = tallyByUri.get(row.subject_uri) ?? { up: 0, down: 0 };
-    const count = Number(row.count);
-    if (row.direction === "up") prev.up += count;
-    else if (row.direction === "down") prev.down += count;
-    tallyByUri.set(row.subject_uri, prev);
-  }
+  const tallyByUri = await loadVoteTallies(
+    db,
+    descriptions.map((d) => d.uri),
+  );
 
   const enriched: DescriptionWithVotes[] = descriptions.map((d) => {
     const t = tallyByUri.get(d.uri) ?? { up: 0, down: 0 };
