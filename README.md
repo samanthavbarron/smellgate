@@ -1,79 +1,47 @@
 # smellgate
 
-A letterboxd-style app for perfumes, built on [ATProto](https://atproto.com). Log perfumes you own, write reviews (with ratings for sillage and longevity), contribute community descriptions, and browse other users' shelves.
+A letterboxd-style app for perfumes, built on [ATProto](https://atproto.com).
 
-See [PLAN.md](PLAN.md) for the product vision and [AGENTS.md](AGENTS.md) for how we build it.
+Log perfumes you own, rate them across overall impression / sillage / longevity, contribute community descriptions, vote on descriptions others have written, and browse each other's shelves. Built on the operator-curated catalog pattern from [Bookhive](https://bookhive.buzz/) — a dedicated curator account publishes the canonical perfume records, and user records (shelves, reviews, descriptions, comments, votes) reference them by AT-URI.
 
 ## Status
 
-Very early. The repo is currently scaffolding — we're working through Phase 0 (foundations) before any feature work lands. Track progress via [GitHub issues](https://github.com/samanthavbarron/smellgate/issues).
+Feature-complete on localhost; not yet deployed. Every user journey from [PLAN.md](PLAN.md) works end-to-end: browse perfumes, view detail pages with notes-as-tags, browse by note / house / perfumer, view profiles, add to shelf, write reviews + descriptions + comments, vote on descriptions, submit new perfumes, and curator-approve / reject / mark-duplicate submissions — including the rewrite mechanic that repoints a user's pending records at the canonical perfume after a curator approves.
 
-## Data model
+Pre-ship work is tracked in [issue #86](https://github.com/samanthavbarron/smellgate/issues/86), grouped by priority. The 3 hard blockers are: bootstrap a real curator account, fix a known bug in the production seeder script, and wire the hosted-metadata OAuth path for deployment.
 
-smellgate is ATProto-native: user records (shelves, reviews, descriptions, votes, comments) live in users' PDSs under custom lexicons in the `com.smellgate.*` namespace. The canonical source of truth for record types, field shapes, reference conventions, and the curator-account / submission flow is [docs/lexicons.md](docs/lexicons.md). Read it before touching anything under `lexicons/` or writing code that reads or writes records.
-
-## Getting Started
+## Try it locally
 
 ```sh
 git clone https://github.com/samanthavbarron/smellgate.git
 cd smellgate
 cp env.template .env.local
+# edit .env.local: set SMELLGATE_CURATOR_DIDS=did:plc:smellgate-dev-curator
 pnpm install
-pnpm dev
-# Navigate to http://127.0.0.1:3000
+pnpm dev:seed-cache   # populate the cache with 75 synthetic perfumes + 6 reviews
+pnpm dev              # open http://127.0.0.1:3000
 ```
 
-To read data from the network, you'll need an instance of [Tap](https://github.com/bluesky-social/indigo/blob/main/cmd/tap/README.md) running.
+Most of the app is readable without logging in. OAuth only runs the loopback flow right now, so actual login is limited to `127.0.0.1` — the hosted-metadata path for real deployment is issue [#85](https://github.com/samanthavbarron/smellgate/issues/85).
 
-## Running tests
+## Tests
 
 ```sh
-pnpm test              # fast unit tests (no PDS, no network)
-pnpm test:integration  # integration tests: boot an in-process PDS, drive
-                       # a real OAuth authorization-code flow, write + read
-                       # a record on it (see tests/integration/oauth-pds.test.ts)
+pnpm test              # unit (lexicon validators, queries, curators) — ~90 tests
+pnpm test:integration  # integration against an in-process PDS (real OAuth + dispatcher + DB)
 ```
 
-## Local ephemeral PDS
+The integration tier boots a real ATProto PDS + PLC directory in-process via [`@atproto/dev-env`](https://www.npmjs.com/package/@atproto/dev-env). No docker, no external network.
 
-Integration tests run against a real ATProto PDS — never against mocks, and
-never against the public network. The PDS is started **in-process** by
-[`@atproto/dev-env`](https://www.npmjs.com/package/@atproto/dev-env), which
-also runs a local PLC directory inside the same Node process. Nothing
-external is required: no docker, no `plc.directory`, no `pds:up` step.
+## Where to find things
 
-### How it works
-
-`tests/helpers/pds.ts` exposes the lifecycle:
-
-- `startEphemeralPds()` — boots a fresh PDS + PLC on a random port and
-  returns an `EphemeralPds` handle. State is empty on every call.
-- `createTestAccounts(pds, specs?)` — creates the deterministic test
-  accounts (default: `alice.test` / `alice-pw`, `bob.test` / `bob-pw`) and
-  returns their DIDs + JWTs.
-- `stopEphemeralPds(pds)` — tears the PDS + PLC down. State is discarded.
-
-Lifecycle is explicit on purpose. There is no module-level singleton; the
-caller (typically a Vitest `globalSetup` once #7's follow-up wires it in)
-decides when to start and stop. To reset state between runs, just call
-`stopEphemeralPds` and `startEphemeralPds` again — there's nothing on disk
-to clean up.
-
-### Default test accounts
-
-| shortName | handle       | password   |
-| --------- | ------------ | ---------- |
-| `alice`   | `alice.test` | `alice-pw` |
-| `bob`     | `bob.test`   | `bob-pw`   |
-
-Override by passing your own `TestAccountSpec[]` to `createTestAccounts`.
-
-### Pointing tests at the PDS
-
-Test code gets the PDS URL from the `EphemeralPds` handle returned by
-`startEphemeralPds`, and an `AtpAgent` from `pds.network.pds.getAgent()`.
-Do not hard-code a port — every run picks a fresh one.
+- **Product vision:** [PLAN.md](PLAN.md)
+- **How we build:** [AGENTS.md](AGENTS.md) — working mode, adversarial review, repo layout, roadmap, resume-context
+- **Data model:** [docs/lexicons.md](docs/lexicons.md) — the 8 `com.smellgate.*` record types and the submission → canonical flow
+- **Frontend conventions:** [docs/ui.md](docs/ui.md)
+- **Pre-ship backlog:** [issue #86](https://github.com/samanthavbarron/smellgate/issues/86)
+- **Contributing:** [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ## Credits
 
-Bootstrapped from the [`bluesky-social/statusphere-example-app`](https://github.com/bluesky-social/statusphere-example-app) starter.
+Bootstrapped from [`bluesky-social/statusphere-example-app`](https://github.com/bluesky-social/statusphere-example-app).
