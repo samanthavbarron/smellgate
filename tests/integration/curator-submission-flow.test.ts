@@ -448,26 +448,40 @@ describe("smellgate submission + curator flow (Phase 3.C)", () => {
   let pds: EphemeralPds;
   let alice: TestAccountCreds;
   let bob: TestAccountCreds;
+  let carol: TestAccountCreds;
   let aliceClient: NodeOAuthClient;
   let bobClient: NodeOAuthClient;
+  let carolClient: NodeOAuthClient;
   let aliceSession: OAuthSession;
   let bobSession: OAuthSession;
+  let carolSession: OAuthSession;
 
   beforeAll(async () => {
     pds = await startEphemeralPds();
-    const accounts = await createTestAccounts(pds);
+    // alice = regular user, bob = curator, carol = second regular user
+    // used by the cross-tenant rewrite-guard test (#61).
+    const accounts = await createTestAccounts(pds, [
+      { shortName: "alice", handle: "alice.test", password: "alice-pw" },
+      { shortName: "bob", handle: "bob.test", password: "bob-pw" },
+      { shortName: "carol", handle: "carol.test", password: "carol-pw" },
+    ]);
     const a = accounts.find((x) => x.shortName === "alice");
     const b = accounts.find((x) => x.shortName === "bob");
-    if (!a || !b) throw new Error("alice/bob not seeded");
+    const c = accounts.find((x) => x.shortName === "carol");
+    if (!a || !b || !c) throw new Error("alice/bob/carol not seeded");
     alice = a;
     bob = b;
+    carol = c;
     aliceClient = createTestOAuthClient(pds);
     bobClient = createTestOAuthClient(pds);
+    carolClient = createTestOAuthClient(pds);
     aliceSession = await completeOAuthFlow(aliceClient, alice.handle, alice.password);
     bobSession = await completeOAuthFlow(bobClient, bob.handle, bob.password);
+    carolSession = await completeOAuthFlow(carolClient, carol.handle, carol.password);
     expect(aliceSession.did).toBe(alice.did);
     expect(bobSession.did).toBe(bob.did);
-  }, 180_000);
+    expect(carolSession.did).toBe(carol.did);
+  }, 240_000);
 
   afterAll(async () => {
     if (pds) await stopEphemeralPds(pds);
@@ -776,13 +790,19 @@ describe("smellgate submission + curator flow (Phase 3.C)", () => {
     const updatedReview = await getRecord(aliceSession, reviewCreate.uri);
     const uv = updatedReview.value as {
       $type: string;
-      perfume: { uri: string };
+      perfume: { uri: string; cid: string };
       body: string;
       rating: number;
     };
     expect(uv.$type).toBe("com.smellgate.review");
     expect(uv.perfume.uri).toBe(perfumeUri);
     expect(uv.perfume.uri).not.toBe(sub.uri);
+    // CID assertion (issue #60): the rewritten strongRef must point at
+    // the canonical perfume's CID, not the submission's CID nor the
+    // review's own CID. A regression that read the wrong CID source
+    // would not be caught by the URI-only assertion above.
+    expect(uv.perfume.cid).toBe(perfumeRec.cid);
+    expect(uv.perfume.cid).not.toBe(subFetched.cid);
     // Other fields preserved.
     expect(uv.body).toBe(reviewBody);
     expect(uv.rating).toBe(7);
@@ -868,12 +888,17 @@ describe("smellgate submission + curator flow (Phase 3.C)", () => {
     const updatedShelf = await getRecord(aliceSession, shelfCreate.uri);
     const sv = updatedShelf.value as {
       $type: string;
-      perfume: { uri: string };
+      perfume: { uri: string; cid: string };
       bottleSizeMl?: number;
       isDecant?: boolean;
     };
     expect(sv.$type).toBe("com.smellgate.shelfItem");
     expect(sv.perfume.uri).toBe(canonicalUri);
+    // CID assertion (issue #60): the rewritten strongRef must carry the
+    // canonical perfume's CID, sourced from the cache row populated by
+    // the dispatcher — not the submission's CID.
+    expect(sv.perfume.cid).toBe(canonicalRow!.cid);
+    expect(sv.perfume.cid).not.toBe(subFetched.cid);
     expect(sv.bottleSizeMl).toBe(50);
     expect(sv.isDecant).toBe(true);
   }, 90_000);
@@ -979,4 +1004,133 @@ describe("smellgate submission + curator flow (Phase 3.C)", () => {
       env.curator.listPendingSubmissionsAction(env.db.getDb(), aliceSession),
     ).rejects.toMatchObject({ name: "ActionError", status: 403 });
   }, 60_000);
+
+  // ---------------------------------------------------------------------------
+  // 9. Cross-tenant rewrite guard (issue #61).
+  //
+  // `getPendingRecordsForUser` filters by `u.author_did = authorDid`,
+  // which is the load-bearing guarantee that one user's call to
+  // `rewritePendingRecords` can never touch another user's records.
+  // This test exercises that guarantee end-to-end:
+  //
+  //   1. Alice submits a perfume and writes a pending review against it.
+  //   2. Bob (curator) approves the submission.
+  //   3. Carol — a completely separate authenticated user — calls
+  //      `rewritePendingRecords` with her own session. The call MUST
+  //      report no rewrites and Alice's review on her PDS MUST be
+  //      unchanged (still pointing at the submission URI).
+  //   4. CONTROL: Alice then calls `rewritePendingRecords` with her own
+  //      session and we assert the review IS rewritten. Without this
+  //      control the test could pass even if rewrites were globally
+  //      broken (e.g. always returning empty), so the cross-tenant
+  //      assertion would be vacuous.
+  // ---------------------------------------------------------------------------
+
+  it("rewritePendingRecords is scoped to the calling user (cross-tenant guard)", async () => {
+    // Alice submits.
+    const sub = await env.actions.submitPerfumeAction(env.db.getDb(), aliceSession, {
+      name: "Tenant Target",
+      house: "House",
+      notes: ["leather"],
+    });
+    const subFetched = await getRecord(aliceSession, sub.uri);
+    await indexRecordIntoCache(env, sub.uri, subFetched.cid, {
+      $type: "com.smellgate.perfumeSubmission",
+      ...subFetched.value,
+    });
+
+    // Alice writes a pending review against her own submission.
+    const reviewBody = "Alice's pending take.";
+    const reviewCreate = await createRecord(
+      aliceSession,
+      "com.smellgate.review",
+      {
+        perfume: { uri: sub.uri, cid: subFetched.cid },
+        rating: 6,
+        sillage: 2,
+        longevity: 3,
+        body: reviewBody,
+        createdAt: nowIso(),
+      },
+    );
+    await indexRecordIntoCache(env, reviewCreate.uri, reviewCreate.cid, {
+      $type: "com.smellgate.review",
+      perfume: { uri: sub.uri, cid: subFetched.cid },
+      rating: 6,
+      sillage: 2,
+      longevity: 3,
+      body: reviewBody,
+      createdAt: nowIso(),
+    });
+
+    // Bob (curator) approves Alice's submission.
+    const { perfumeUri } = await env.curator.approveSubmissionAction(
+      env.db.getDb(),
+      bobSession,
+      { submissionUri: sub.uri },
+    );
+    const perfumeRec = await getRecord(bobSession, perfumeUri);
+    await indexRecordIntoCache(env, perfumeUri, perfumeRec.cid, {
+      $type: "com.smellgate.perfume",
+      ...perfumeRec.value,
+    });
+    // Pull the resolution off the curator's PDS and feed it into the
+    // cache so the rewrite query can see it.
+    const listRes = await bobSession.fetchHandler(
+      `/xrpc/com.atproto.repo.listRecords?repo=${encodeURIComponent(bob.did)}&collection=com.smellgate.perfumeSubmissionResolution&limit=100`,
+      { method: "GET" },
+    );
+    const listBody = (await listRes.json()) as {
+      records: { uri: string; cid: string; value: Record<string, unknown> }[];
+    };
+    const resolutionRow = listBody.records.find(
+      (r) => (r.value as { submission: { uri: string } }).submission.uri === sub.uri,
+    );
+    expect(resolutionRow).toBeDefined();
+    await indexRecordIntoCache(
+      env,
+      resolutionRow!.uri,
+      resolutionRow!.cid,
+      resolutionRow!.value,
+    );
+
+    // ---- Cross-tenant call: Carol triggers rewrite with her session.
+    // She has no pending records of her own and crucially must not see
+    // Alice's. Expected outcome: empty rewrittenUris and Alice's review
+    // is untouched on her PDS.
+    const carolRewrite = await env.curator.rewritePendingRecords(
+      env.db.getDb(),
+      carolSession,
+    );
+    expect(carolRewrite.rewrittenUris).toEqual([]);
+    expect(carolRewrite.failedUris).toEqual([]);
+
+    // Alice's review must STILL point at the submission URI/CID, not
+    // the canonical perfume — Carol's call must not have touched it.
+    const aliceReviewAfterCarol = await getRecord(aliceSession, reviewCreate.uri);
+    const arav = aliceReviewAfterCarol.value as {
+      perfume: { uri: string; cid: string };
+    };
+    expect(arav.perfume.uri).toBe(sub.uri);
+    expect(arav.perfume.cid).toBe(subFetched.cid);
+    expect(arav.perfume.uri).not.toBe(perfumeUri);
+
+    // ---- Control: Alice triggers her own rewrite. The same record
+    // must now be rewritten to the canonical perfume. Without this
+    // control, the cross-tenant assertion above could pass trivially
+    // (e.g. if rewrites were globally broken).
+    const aliceRewrite = await env.curator.rewritePendingRecords(
+      env.db.getDb(),
+      aliceSession,
+    );
+    expect(aliceRewrite.failedUris).toEqual([]);
+    expect(aliceRewrite.rewrittenUris).toContain(reviewCreate.uri);
+
+    const aliceReviewAfterSelf = await getRecord(aliceSession, reviewCreate.uri);
+    const asav = aliceReviewAfterSelf.value as {
+      perfume: { uri: string; cid: string };
+    };
+    expect(asav.perfume.uri).toBe(perfumeUri);
+    expect(asav.perfume.cid).toBe(perfumeRec.cid);
+  }, 120_000);
 });
