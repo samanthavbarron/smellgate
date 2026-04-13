@@ -11,8 +11,12 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { countGraphemes } from "../../lib/graphemes";
 
-const MAX_CHARS = 5000;
+// Grapheme count, not UTF-16 code-unit count, so we agree with the
+// lexicon's `maxGraphemes` constraint on emoji and combining marks.
+// See `lib/graphemes.ts` and #83.
+const MAX_GRAPHEMES = 5000;
 
 export function DescriptionComposer({
   perfumeUri,
@@ -26,7 +30,8 @@ export function DescriptionComposer({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const tooLong = body.length > MAX_CHARS;
+  const bodyGraphemes = countGraphemes(body);
+  const tooLong = bodyGraphemes > MAX_GRAPHEMES;
   const empty = body.trim().length === 0;
 
   async function handleSubmit(e: React.FormEvent) {
@@ -37,7 +42,7 @@ export function DescriptionComposer({
       return;
     }
     if (tooLong) {
-      setError(`Description must be ≤ ${MAX_CHARS} characters.`);
+      setError(`Description must be ≤ ${MAX_GRAPHEMES} graphemes.`);
       return;
     }
     setLoading(true);
@@ -78,9 +83,9 @@ export function DescriptionComposer({
         />
         <div className="mt-1 text-xs text-zinc-500 dark:text-zinc-500">
           <span className={tooLong ? "text-red-600 dark:text-red-400" : ""}>
-            {body.length}
+            {bodyGraphemes}
           </span>{" "}
-          / {MAX_CHARS}
+          / {MAX_GRAPHEMES}
         </div>
       </div>
 

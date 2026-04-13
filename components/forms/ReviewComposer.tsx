@@ -12,13 +12,15 @@
  *   - rating: integer 1-10
  *   - sillage: integer 1-5
  *   - longevity: integer 1-5
- *   - body: non-empty, ≤ 15000 chars
+ *   - body: non-empty, ≤ 15000 graphemes (counted with
+ *     `Intl.Segmenter` via `lib/graphemes.ts` — see #83)
  */
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { countGraphemes } from "../../lib/graphemes";
 
-const MAX_CHARS = 15000;
+const MAX_GRAPHEMES = 15000;
 
 export function ReviewComposer({
   perfumeUri,
@@ -35,7 +37,8 @@ export function ReviewComposer({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const tooLong = body.length > MAX_CHARS;
+  const bodyGraphemes = countGraphemes(body);
+  const tooLong = bodyGraphemes > MAX_GRAPHEMES;
   const empty = body.trim().length === 0;
 
   async function handleSubmit(e: React.FormEvent) {
@@ -62,7 +65,7 @@ export function ReviewComposer({
       return;
     }
     if (tooLong) {
-      setError(`Review body must be ≤ ${MAX_CHARS} characters.`);
+      setError(`Review body must be ≤ ${MAX_GRAPHEMES} graphemes.`);
       return;
     }
 
@@ -140,9 +143,9 @@ export function ReviewComposer({
         />
         <div className="mt-1 text-xs text-zinc-500 dark:text-zinc-500">
           <span className={tooLong ? "text-red-600 dark:text-red-400" : ""}>
-            {body.length}
+            {bodyGraphemes}
           </span>{" "}
-          / {MAX_CHARS}
+          / {MAX_GRAPHEMES}
         </div>
       </div>
 

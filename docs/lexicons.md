@@ -75,7 +75,7 @@ Fields:
 A submission is a proposal to add a perfume to the canonical catalog. Curators review it and either (a) publish a corresponding `com.smellgate.perfume` record and mark the submission resolved, or (b) reject it.
 
 Fields: same shape as `perfume` (name/house/creator/releaseYear/notes/description), plus:
-- `rationale` (string, optional) — user's note to the curator
+- `rationale` (string, optional, min 1 if present) — user's note to the curator. `minLength: 1` so an empty-string rationale is rejected at the lexicon layer (the field is optional, but if present it must carry content).
 - `createdAt` (datetime, required)
 
 There is no `status` field on the submission itself. Resolution is tracked by a separate curator-authored record (see `perfumeSubmissionResolution` below) so that submissions remain append-only from the submitter's perspective.
@@ -108,7 +108,7 @@ There is no `status` field on the submission itself. Resolution is tracked by a 
 - `rating` (integer 1–10, required) — overall
 - `sillage` (integer 1–5, required)
 - `longevity` (integer 1–5, required)
-- `body` (string, required, max ~15000 graphemes)
+- `body` (string, required, min 1 / max ~15000 graphemes) — `minLength: 1` is enforced in the lexicon so a zero-length body fails `$safeParse`. ATProto's `required` only means the field is present; without `minLength` an empty string would validate.
 - `createdAt` (datetime, required)
 
 Scale choice: 1–10 for overall (gives more room for nuance than 1–5, and mirrors Letterboxd's half-star-of-5 system when halved for display); 1–5 for sillage and longevity because those are coarser physical observations.
@@ -118,7 +118,7 @@ Scale choice: 1–10 for overall (gives more room for nuance than 1–5, and mir
 **Written by:** any user. Distinct from the canonical `perfume.description` (which is curator-authored).
 
 - `perfume` (strongRef to `com.smellgate.perfume`, required)
-- `body` (string, required, max ~5000 graphemes)
+- `body` (string, required, min 1 / max ~5000 graphemes) — `minLength: 1` enforced in the lexicon, same rationale as `review.body`.
 - `createdAt` (datetime, required)
 
 ### `com.smellgate.vote` — upvote/downvote on a description
@@ -136,7 +136,7 @@ One vote per (user, description) is enforced at the **read layer**, not in the l
 **Written by:** any user.
 
 - `subject` (strongRef to `com.smellgate.review`, required)
-- `body` (string, required, max ~5000 graphemes)
+- `body` (string, required, min 1 / max ~5000 graphemes) — `minLength: 1` enforced in the lexicon, same rationale as `review.body`.
 - `createdAt` (datetime, required)
 
 Threading model: **flat**. Comments reply only to reviews, not to other comments. Revisit later if users ask for it; do not build a tree now.

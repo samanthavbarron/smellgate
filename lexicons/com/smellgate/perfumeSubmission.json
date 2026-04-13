@@ -37,6 +37,7 @@
           },
           "rationale": {
             "type": "string",
+            "minLength": 1,
             "description": "Optional note from the submitter to the curator."
           },
           "createdAt": {

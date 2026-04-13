@@ -1,0 +1,11 @@
+{
+  "$type": "com.smellgate.perfumeSubmission",
+  "name": "Test Submission Bottle",
+  "house": "Fictional House",
+  "creator": "Imaginary Nose",
+  "releaseYear": 2023,
+  "notes": ["jasmine", "vetiver"],
+  "description": "A proposed addition to the catalog.",
+  "rationale": "",
+  "createdAt": "2024-02-01T08:00:00.000Z"
+}

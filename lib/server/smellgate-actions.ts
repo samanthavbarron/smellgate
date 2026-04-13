@@ -38,6 +38,7 @@ import type { Kysely } from "kysely";
 import * as com from "../lexicons/com";
 import { getPerfumeByUri } from "../db/smellgate-queries";
 import type { DatabaseSchema } from "../db";
+import { countGraphemes } from "../graphemes";
 
 type Db = Kysely<DatabaseSchema>;
 
@@ -282,8 +283,10 @@ export async function addToShelfAction(
  * - `rating` integer in [1, 10].
  * - `sillage` integer in [1, 5].
  * - `longevity` integer in [1, 5].
- * - `body` non-empty, ≤ 15000 graphemes (we approximate with character
- *   length — the lexicon does the strict grapheme count on parse).
+ * - `body` non-empty, ≤ 15000 graphemes (counted with `Intl.Segmenter`
+ *   so we agree with the lexicon's `maxGraphemes` constraint on
+ *   strings containing emoji / surrogate pairs / combining marks; see
+ *   `lib/graphemes.ts`).
  */
 export async function postReviewAction(
   db: Db,
@@ -296,7 +299,7 @@ export async function postReviewAction(
   const longevity = requireIntInRange(input.longevity, "longevity", 1, 5);
   const body = requireString(input.body, "body");
   if (body.trim().length === 0) bad("body must not be empty");
-  if (body.length > 15000) bad("body must be ≤ 15000 characters");
+  if (countGraphemes(body) > 15000) bad("body too long (max 15000 graphemes)");
 
   const lexClient = new Client(session);
   const res = await lexClient.create(com.smellgate.review.main, {
@@ -313,7 +316,8 @@ export async function postReviewAction(
 /**
  * Write a `com.smellgate.description` record to the user's PDS.
  *
- * Validation: `perfumeUri` must resolve, body non-empty, ≤ 5000 chars.
+ * Validation: `perfumeUri` must resolve, body non-empty, ≤ 5000
+ * graphemes (counted with `Intl.Segmenter`; see `lib/graphemes.ts`).
  */
 export async function postDescriptionAction(
   db: Db,
@@ -323,7 +327,7 @@ export async function postDescriptionAction(
   const target = await requirePerfumeInCache(db, input.perfumeUri);
   const body = requireString(input.body, "body");
   if (body.trim().length === 0) bad("body must not be empty");
-  if (body.length > 5000) bad("body must be ≤ 5000 characters");
+  if (countGraphemes(body) > 5000) bad("body too long (max 5000 graphemes)");
 
   const lexClient = new Client(session);
   const res = await lexClient.create(com.smellgate.description.main, {
@@ -369,7 +373,8 @@ export async function voteOnDescriptionAction(
  * Write a `com.smellgate.comment` record to the user's PDS.
  *
  * Validation: `reviewUri` must resolve in the cache; body non-empty,
- * ≤ 5000 chars.
+ * ≤ 5000 graphemes (counted with `Intl.Segmenter`; see
+ * `lib/graphemes.ts`).
  */
 export async function commentOnReviewAction(
   db: Db,
@@ -380,7 +385,7 @@ export async function commentOnReviewAction(
   if (!isNonEmptyString(subjectUri, 8192)) bad("reviewUri is required");
   const body = requireString(input.body, "body");
   if (body.trim().length === 0) bad("body must not be empty");
-  if (body.length > 5000) bad("body must be ≤ 5000 characters");
+  if (countGraphemes(body) > 5000) bad("body too long (max 5000 graphemes)");
   const cid = await getReviewCid(db, subjectUri);
   if (!cid) notFound(`unknown review: ${subjectUri}`);
 
