@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { $safeParse } from '../../lib/lexicons/com/smellgate/perfume'
+import { seedRkey } from '../../scripts/seed-catalog'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -152,5 +153,41 @@ describe('seed-catalog.json', () => {
     const ratio = withCreator / entries.length
     expect(ratio).toBeGreaterThanOrEqual(0.25)
     expect(ratio).toBeLessThanOrEqual(0.75)
+  })
+})
+
+describe('seedRkey (#41)', () => {
+  it('produces a 13-character base32-sortable string', () => {
+    const rkey = seedRkey('seed-042')
+    expect(rkey).toHaveLength(13)
+    // TID alphabet per @atproto/common-web util.ts.
+    expect(rkey).toMatch(/^[234567abcdefghijklmnopqrstuvwxyz]{13}$/)
+  })
+
+  it('is deterministic across calls', () => {
+    const a = seedRkey('seed-001')
+    const b = seedRkey('seed-001')
+    expect(a).toBe(b)
+  })
+
+  it('produces a unique rkey for every seed entry in the fixture', () => {
+    const entries = loadCatalog()
+    const seen = new Set<string>()
+    for (const entry of entries) {
+      const rkey = seedRkey(entry._seed.id)
+      expect(rkey).toHaveLength(13)
+      expect(
+        seen.has(rkey),
+        `collision: ${rkey} for ${entry._seed.id}`,
+      ).toBe(false)
+      seen.add(rkey)
+    }
+    expect(seen.size).toBe(entries.length)
+  })
+
+  it('differs between distinct seed ids', () => {
+    const a = seedRkey('seed-001')
+    const b = seedRkey('seed-002')
+    expect(a).not.toBe(b)
   })
 })

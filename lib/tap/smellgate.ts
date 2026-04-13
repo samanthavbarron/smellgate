@@ -65,6 +65,44 @@ const VOTE_DIRECTIONS = new Set(["up", "down"]);
 const RESOLUTION_DECISIONS = new Set(["approved", "rejected", "duplicate"]);
 
 // ---------------------------------------------------------------------------
+// Drop-site observability (#47).
+//
+// The dispatcher silently drops records that fail a gate: curator-only
+// authorship, lexicon `$safeParse`, closed-enum checks. Silent is the
+// right production default (firehose volume + a single bad-actor PDS
+// can flood logs), but when debugging a mis-seen record it's
+// miserable. This optional debug hook logs each drop with enough
+// context to track down what was dropped and why.
+//
+// Opt-in via `SMELLGATE_TAP_DEBUG=1`. Reads the env var fresh on each
+// call so tests can stub it. Uses `console.debug` so Node's default
+// log level still hides these unless someone has set
+// `NODE_DEBUG`/inspector attached. Tests that drop records (and there
+// are several in `tests/integration/tap-smellgate-cache.test.ts`)
+// will NOT emit these lines because `SMELLGATE_TAP_DEBUG` is unset in
+// the test env.
+// ---------------------------------------------------------------------------
+type DropReason =
+  | "curator_gate"
+  | "lex_validate"
+  | "closed_enum";
+
+function logDrop(
+  reason: DropReason,
+  evt: RecordEvent,
+  uri: string,
+  extra?: Record<string, unknown>,
+): void {
+  if (process.env.SMELLGATE_TAP_DEBUG !== "1") return;
+  console.debug(`[tap] drop: ${reason}`, {
+    collection: evt.collection,
+    did: evt.did,
+    uri,
+    ...extra,
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Entry point.
 // ---------------------------------------------------------------------------
 
@@ -137,9 +175,15 @@ async function handlePerfume(
   indexedAt: number,
 ): Promise<void> {
   // Curator-only: enforce at index time, per docs/lexicons.md.
-  if (!isCurator(evt.did)) return;
+  if (!isCurator(evt.did)) {
+    logDrop("curator_gate", evt, uri);
+    return;
+  }
   const result = smellgate.perfume.$safeParse(evt.record);
-  if (!result.success) return;
+  if (!result.success) {
+    logDrop("lex_validate", evt, uri);
+    return;
+  }
   const record = result.value;
 
   await db.transaction().execute(async (tx) => {
@@ -200,7 +244,10 @@ async function handlePerfumeSubmission(
   indexedAt: number,
 ): Promise<void> {
   const result = smellgate.perfumeSubmission.$safeParse(evt.record);
-  if (!result.success) return;
+  if (!result.success) {
+    logDrop("lex_validate", evt, uri);
+    return;
+  }
   const record = result.value;
 
   await db.transaction().execute(async (tx) => {
@@ -259,14 +306,23 @@ async function handlePerfumeSubmissionResolution(
   indexedAt: number,
 ): Promise<void> {
   // Curator-only.
-  if (!isCurator(evt.did)) return;
+  if (!isCurator(evt.did)) {
+    logDrop("curator_gate", evt, uri);
+    return;
+  }
   const result = smellgate.perfumeSubmissionResolution.$safeParse(evt.record);
-  if (!result.success) return;
+  if (!result.success) {
+    logDrop("lex_validate", evt, uri);
+    return;
+  }
   const record = result.value;
 
   // Closed-enum gate: lexicon only types `decision` as a string at
   // runtime, so enforce the `knownValues` ourselves.
-  if (!RESOLUTION_DECISIONS.has(record.decision)) return;
+  if (!RESOLUTION_DECISIONS.has(record.decision)) {
+    logDrop("closed_enum", evt, uri, { field: "decision", value: record.decision });
+    return;
+  }
 
   await db
     .insertInto("smellgate_perfume_submission_resolution")
@@ -307,7 +363,10 @@ async function handleShelfItem(
   indexedAt: number,
 ): Promise<void> {
   const result = smellgate.shelfItem.$safeParse(evt.record);
-  if (!result.success) return;
+  if (!result.success) {
+    logDrop("lex_validate", evt, uri);
+    return;
+  }
   const record = result.value;
 
   await db
@@ -349,7 +408,10 @@ async function handleReview(
   indexedAt: number,
 ): Promise<void> {
   const result = smellgate.review.$safeParse(evt.record);
-  if (!result.success) return;
+  if (!result.success) {
+    logDrop("lex_validate", evt, uri);
+    return;
+  }
   const record = result.value;
 
   await db
@@ -391,7 +453,10 @@ async function handleDescription(
   indexedAt: number,
 ): Promise<void> {
   const result = smellgate.description.$safeParse(evt.record);
-  if (!result.success) return;
+  if (!result.success) {
+    logDrop("lex_validate", evt, uri);
+    return;
+  }
   const record = result.value;
 
   await db
@@ -427,11 +492,17 @@ async function handleVote(
   indexedAt: number,
 ): Promise<void> {
   const result = smellgate.vote.$safeParse(evt.record);
-  if (!result.success) return;
+  if (!result.success) {
+    logDrop("lex_validate", evt, uri);
+    return;
+  }
   const record = result.value;
 
   // Closed-enum gate: direction must be "up" or "down".
-  if (!VOTE_DIRECTIONS.has(record.direction)) return;
+  if (!VOTE_DIRECTIONS.has(record.direction)) {
+    logDrop("closed_enum", evt, uri, { field: "direction", value: record.direction });
+    return;
+  }
 
   await db
     .insertInto("smellgate_vote")
@@ -466,7 +537,10 @@ async function handleComment(
   indexedAt: number,
 ): Promise<void> {
   const result = smellgate.comment.$safeParse(evt.record);
-  if (!result.success) return;
+  if (!result.success) {
+    logDrop("lex_validate", evt, uri);
+    return;
+  }
   const record = result.value;
 
   await db
