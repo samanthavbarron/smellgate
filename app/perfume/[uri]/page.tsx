@@ -15,15 +15,11 @@
  * empirically against Next.js 16.1.1 with the seeded dev cache.
  *
  * Action buttons ("Add to shelf", "Write review", "Write description",
- * "Comment") point at composer routes that DO NOT EXIST YET. Phase 4.D
- * (issue TBD) will build them. For now the links will 404; that is
- * expected and documented in the PR body so nobody has to retrofit
- * links later. Same convention the home-page PerfumeTile already uses.
+ * "Comment") link to composer routes wired up in Phase 4.D (PR #80).
  *
- * Vote buttons on community descriptions are similarly stubs — the
- * underlying server action (vote write path) is Phase 3 territory and
- * isn't wired to a UI yet. Rendered as disabled-looking `<button>`s
- * with a `title` attribute explaining the stub.
+ * Vote buttons on community descriptions are real `<VoteButtons>`
+ * (PR #80) for signed-in users; signed-out viewers see a static score
+ * gutter.
  */
 import Link from "next/link";
 import { notFound } from "next/navigation";
