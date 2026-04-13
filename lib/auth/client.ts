@@ -11,7 +11,7 @@ import type {
 } from "@atproto/oauth-client-node";
 import { getDb } from "../db";
 
-export const SCOPE = "atproto repo:xyz.statusphere.status";
+export const SCOPE = "atproto transition:generic";
 
 let client: NodeOAuthClient | null = null;
 
