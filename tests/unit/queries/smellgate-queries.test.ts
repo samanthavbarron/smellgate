@@ -720,6 +720,82 @@ describe("smellgate-queries", () => {
     });
   });
 
+  describe("searchPerfumes", () => {
+    it("returns an empty array for an empty or whitespace query (does not match everything)", async () => {
+      await seedPerfume(env.db, { name: "Vespertine", house: "Oriza" });
+      await seedPerfume(env.db, { name: "Matin", house: "Chanel" });
+      expect(await env.q.searchPerfumes(env.db.getDb(), "")).toEqual([]);
+      expect(await env.q.searchPerfumes(env.db.getDb(), "   ")).toEqual([]);
+    });
+
+    it("substring-matches the perfume name case-insensitively", async () => {
+      await seedPerfume(env.db, { name: "Vespertine", house: "Oriza" });
+      await seedPerfume(env.db, { name: "Matin Calme", house: "Chanel" });
+      const got = await env.q.searchPerfumes(env.db.getDb(), "VESP");
+      expect(got.map((p) => p.name)).toEqual(["Vespertine"]);
+    });
+
+    it("substring-matches the house case-insensitively", async () => {
+      await seedPerfume(env.db, { name: "Alpha", house: "Guerlain" });
+      await seedPerfume(env.db, { name: "Bravo", house: "Oriza L. Legrand" });
+      const got = await env.q.searchPerfumes(env.db.getDb(), "oriza");
+      expect(got.map((p) => p.name)).toEqual(["Bravo"]);
+    });
+
+    it("matches on name OR house in a single query", async () => {
+      await seedPerfume(env.db, { name: "Ambre Solaire", house: "Chanel" });
+      await seedPerfume(env.db, { name: "Fig Leaf", house: "Ambre House" });
+      await seedPerfume(env.db, { name: "Unrelated", house: "Other" });
+      const got = await env.q.searchPerfumes(env.db.getDb(), "ambre");
+      // name ASC => "Ambre Solaire" before "Fig Leaf"
+      expect(got.map((p) => p.name)).toEqual(["Ambre Solaire", "Fig Leaf"]);
+    });
+
+    it("treats % and _ in the query as literal characters, not wildcards", async () => {
+      await seedPerfume(env.db, { name: "50% Off", house: "A" });
+      await seedPerfume(env.db, { name: "50 percent", house: "B" });
+      await seedPerfume(env.db, { name: "snake_case", house: "C" });
+      await seedPerfume(env.db, { name: "snakeXcase", house: "D" });
+
+      const pct = await env.q.searchPerfumes(env.db.getDb(), "50%");
+      expect(pct.map((p) => p.name)).toEqual(["50% Off"]);
+
+      const underscore = await env.q.searchPerfumes(env.db.getDb(), "snake_");
+      expect(underscore.map((p) => p.name)).toEqual(["snake_case"]);
+    });
+
+    it("respects limit and offset and orders by name ASC", async () => {
+      await seedPerfume(env.db, { name: "Rose Delta", house: "X" });
+      await seedPerfume(env.db, { name: "Rose Alpha", house: "X" });
+      await seedPerfume(env.db, { name: "Rose Charlie", house: "X" });
+      await seedPerfume(env.db, { name: "Rose Bravo", house: "X" });
+
+      const page1 = await env.q.searchPerfumes(env.db.getDb(), "rose", {
+        limit: 2,
+        offset: 0,
+      });
+      expect(page1.map((p) => p.name)).toEqual(["Rose Alpha", "Rose Bravo"]);
+
+      const page2 = await env.q.searchPerfumes(env.db.getDb(), "rose", {
+        limit: 2,
+        offset: 2,
+      });
+      expect(page2.map((p) => p.name)).toEqual(["Rose Charlie", "Rose Delta"]);
+    });
+
+    it("returns notes as a string array on each result", async () => {
+      await seedPerfume(env.db, {
+        name: "Vespertine",
+        house: "Oriza",
+        notes: ["iris", "ambergris", "vetiver"],
+      });
+      const got = await env.q.searchPerfumes(env.db.getDb(), "vespertine");
+      expect(got).toHaveLength(1);
+      expect(Array.isArray(got[0].notes)).toBe(true);
+      expect(got[0].notes.sort()).toEqual(["ambergris", "iris", "vetiver"]);
+    });
+  });
+
   describe("getResolutionForSubmission", () => {
     it("returns the resolution row", async () => {
       const s = await seedSubmission(env.db, USER_A, "alpha");
