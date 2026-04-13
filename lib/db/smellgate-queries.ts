@@ -144,6 +144,73 @@ export async function getPerfumeByUri(
   return { ...row, notes: notesByUri.get(uri) ?? [] };
 }
 
+/**
+ * Most recently indexed canonical perfumes, newest first. Powers the
+ * home page's "recent perfumes" grid (Phase 4.A). `indexed_at` — not
+ * the author-controlled `created_at` — is the right ordering: it
+ * reflects when our cache learned about the record, which is what the
+ * "recent" section actually means to a visitor.
+ */
+export async function getRecentPerfumes(
+  db: Db,
+  opts?: PaginationOpts,
+): Promise<PerfumeWithNotes[]> {
+  const { limit, offset } = paged(opts);
+  const perfumes = await db
+    .selectFrom("smellgate_perfume")
+    .selectAll()
+    .orderBy("indexed_at", "desc")
+    .limit(limit)
+    .offset(offset)
+    .execute();
+  return attachNotes(db, perfumes);
+}
+
+/**
+ * A review bundled with a thin slice of its perfume, for list views
+ * that need to show the perfume name alongside each review without
+ * round-tripping per row. `perfume` is null when the referenced
+ * perfume row isn't in the cache yet (firehose ordering is not
+ * dependency ordering — see smellgate-queries.ts header comment).
+ */
+export type ReviewWithPerfume = SmellgateReviewTable & {
+  perfume: { uri: string; name: string; house: string } | null;
+};
+
+/**
+ * Most recently indexed reviews, newest first. Each review is returned
+ * with a (uri, name, house) slice of its perfume so the home page can
+ * show "<perfume name> — <house>" without an N+1. Matches the shape
+ * used by `getUserShelf` for consistency.
+ */
+export async function getRecentReviews(
+  db: Db,
+  opts?: PaginationOpts,
+): Promise<ReviewWithPerfume[]> {
+  const { limit, offset } = paged(opts);
+  const reviews = await db
+    .selectFrom("smellgate_review")
+    .selectAll()
+    .orderBy("indexed_at", "desc")
+    .limit(limit)
+    .offset(offset)
+    .execute();
+  if (reviews.length === 0) return [];
+
+  const perfumeUris = Array.from(new Set(reviews.map((r) => r.perfume_uri)));
+  const perfumeRows = await db
+    .selectFrom("smellgate_perfume")
+    .select(["uri", "name", "house"])
+    .where("uri", "in", perfumeUris)
+    .execute();
+  const byUri = new Map(perfumeRows.map((p) => [p.uri, p]));
+
+  return reviews.map((r) => ({
+    ...r,
+    perfume: byUri.get(r.perfume_uri) ?? null,
+  }));
+}
+
 export async function getPerfumesByNote(
   db: Db,
   note: string,
