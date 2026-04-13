@@ -65,6 +65,9 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import type { AtIdentifierString } from '@atproto/lex'
+import type { Main as PerfumeMain } from '../lib/lexicons/com/smellgate/perfume.defs'
+
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 const SEED_CATALOG_PATH = join(
@@ -133,6 +136,8 @@ async function runLive(): Promise<void> {
   // All imports that touch OAuth / the session DB are lazy so `--dry-run`
   // doesn't spin up a SQLite connection or pull in Next-adjacent modules.
   const { getOAuthClient } = await import('../lib/auth/client')
+  const { Client } = await import('@atproto/lex')
+  const com = await import('../lib/lexicons/com')
 
   const curatorDid = process.env.SMELLGATE_CURATOR_DID
   if (!curatorDid) {
@@ -140,6 +145,7 @@ async function runLive(): Promise<void> {
       'SMELLGATE_CURATOR_DID must be set for live seeding. Refusing to run.',
     )
   }
+  const repo = curatorDid as unknown as AtIdentifierString
 
   console.log('seed-catalog: LIVE MODE')
   console.log(`curator did:   ${curatorDid}`)
@@ -162,75 +168,57 @@ async function runLive(): Promise<void> {
     )
   }
 
-  // Typed loosely on purpose — the @atproto/oauth-client-node OAuthSession
-  // exposes a protocol-level `.rpc.call(...)` / agent interface which we
-  // only need to hit com.atproto.repo.{listRecords,putRecord}.
-  const agent = (session as unknown as { agent?: unknown }).agent ?? session
-
-  const call = async (
-    method: string,
-    params: Record<string, unknown>,
-    body?: Record<string, unknown>,
-  ): Promise<unknown> => {
-    const a = agent as {
-      call?: (
-        m: string,
-        p: Record<string, unknown>,
-        b?: Record<string, unknown>,
-      ) => Promise<unknown>
-      api?: unknown
-    }
-    if (typeof a.call === 'function') {
-      return a.call(method, params, body)
-    }
-    throw new Error(
-      `OAuth session agent does not expose a .call(method, params, body) interface; ` +
-        `seeder cannot write records. Inspect @atproto/oauth-client-node API and update this script.`,
-    )
-  }
+  // Use the same `@atproto/lex` `Client` wrapper that
+  // `lib/server/smellgate-actions.ts` uses to write records via an
+  // OAuth session. The Client constructor accepts an `OAuthSession`
+  // directly and exposes typed `create` / `list` entrypoints keyed on
+  // the generated lexicon record schema, going through the session's
+  // DPoP-bound fetch.
+  const lexClient = new Client(session)
 
   // Fetch existing com.smellgate.perfume records once so we can dedupe by
   // name+house. Paginated.
   const existing = new Set<string>()
-  {
-    let cursor: string | undefined = undefined
-    do {
-      const res = (await call('com.atproto.repo.listRecords', {
-        repo: curatorDid,
-        collection: 'com.smellgate.perfume',
-        limit: 100,
-        cursor,
-      })) as {
-        records?: Array<{ value?: { name?: string; house?: string } }>
-        cursor?: string
+  let cursor: string | undefined = undefined
+  for (;;) {
+    const page: Awaited<
+      ReturnType<typeof lexClient.list<typeof com.smellgate.perfume.main>>
+    > = await lexClient.list(com.smellgate.perfume.main, {
+      repo,
+      limit: 100,
+      cursor,
+    })
+    for (const r of page.records ?? []) {
+      const v = r.value as { name?: unknown; house?: unknown }
+      if (v && typeof v.name === 'string' && typeof v.house === 'string') {
+        existing.add(`${v.house}::${v.name}`)
       }
-      for (const r of res.records ?? []) {
-        const v = r.value
-        if (v && typeof v.name === 'string' && typeof v.house === 'string') {
-          existing.add(`${v.house}::${v.name}`)
-        }
-      }
-      cursor = res.cursor
-    } while (cursor)
+    }
+    if (!page.cursor) break
+    cursor = page.cursor
   }
   console.log(`found ${existing.size} existing perfume records on curator PDS`)
 
+  // The typed `create` helper takes `Omit<Infer<T>, '$type'>` and
+  // re-attaches the `$type` itself. Seed entries already carry
+  // `$type: "com.smellgate.perfume"` from the fixture so we strip it
+  // here before handing the body off.
+  type PerfumeInput = Omit<PerfumeMain, '$type'>
+
   let written = 0
   let skipped = 0
-  for (const [i, record] of records.entries()) {
-    const key = `${String(record.house)}::${String(record.name)}`
+  for (const [i, raw] of records.entries()) {
+    const key = `${String(raw.house)}::${String(raw.name)}`
     if (existing.has(key)) {
       skipped += 1
       continue
     }
-    await call(
-      'com.atproto.repo.createRecord',
-      {},
-      {
-        repo: curatorDid,
-        collection: 'com.smellgate.perfume',
-        record,
-      },
+    const { $type: _drop, ...input } = raw as Record<string, unknown>
+    void _drop
+    await lexClient.create(
+      com.smellgate.perfume.main,
+      input as unknown as PerfumeInput,
+      { repo },
     )
     written += 1
     if ((i + 1) % 10 === 0) {
