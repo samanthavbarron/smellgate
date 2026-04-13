@@ -232,19 +232,13 @@ describe("/api/webhook route wiring", () => {
   });
 
   it("leaves the smellgate cache untouched for xyz.statusphere.status events", async () => {
-    // The legacy statusphere handler itself is not exercised end-to-end
-    // in this suite: it depends on `lib/db/queries.ts`, which uses the
-    // Next.js `@/*` tsconfig path alias that Vitest does not resolve,
-    // and that file is out of scope for this PR (#46). What we CAN
-    // assert from here — and what matters for the wiring change — is
-    // that a statusphere record event never lands in any
-    // `smellgate_*` table. The route handler's statusphere branch is
-    // otherwise byte-for-byte identical to the pre-PR code (only the
-    // legacy queries import was moved to a lazy dynamic import to
-    // keep this test suite loadable). The full statusphere path
-    // remains covered by the production Next.js runtime and can be
-    // re-verified end-to-end once it is either cleaned up or
-    // integration-tested on its own.
+    // The statusphere branch is covered end-to-end by the production
+    // Next.js runtime; this assertion just confirms that whatever the
+    // legacy handler does, it never writes into any `smellgate_*`
+    // table. With the vitest `@/` alias now working (#49) the route
+    // handler's statics imports load `lib/db/queries.ts` fine, so
+    // the previous "out of scope for this PR" caveat no longer
+    // applies.
     const db = env.db.getDb();
     const countBefore = await db
       .selectFrom("smellgate_perfume")

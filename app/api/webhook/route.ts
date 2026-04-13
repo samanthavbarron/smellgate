@@ -1,26 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { parseTapEvent, assureAdminAuth } from "@atproto/tap";
 import { AtUri } from "@atproto/syntax";
-import { getDb } from "../../../lib/db";
-import { dispatchSmellgateEvent } from "../../../lib/tap/smellgate";
-import * as xyz from "../../../lib/lexicons/xyz";
-
-// Legacy statusphere helpers are imported lazily inside the branch
-// that needs them. `lib/db/queries.ts` reaches into `@/lib/tap` via
-// Next.js's `@/*` tsconfig path alias, which the Vitest integration
-// suite does not resolve. Keeping the import dynamic means the
-// non-statusphere tests (including the smellgate wiring tests) never
-// force that module to load, so they can exercise the real route
-// handler directly. Next.js's runtime resolves the `@/` alias just
-// fine when the branch runs in production.
-type LegacyQueries = typeof import("../../../lib/db/queries");
-let _legacyQueries: Promise<LegacyQueries> | null = null;
-function loadLegacyQueries(): Promise<LegacyQueries> {
-  if (!_legacyQueries) {
-    _legacyQueries = import("../../../lib/db/queries");
-  }
-  return _legacyQueries;
-}
+import { getDb } from "@/lib/db";
+import { dispatchSmellgateEvent } from "@/lib/tap/smellgate";
+import * as xyz from "@/lib/lexicons/xyz";
+import {
+  upsertAccount,
+  deleteAccount,
+  insertStatus,
+  deleteStatus,
+} from "@/lib/db/queries";
 
 const TAP_ADMIN_PASSWORD = process.env.TAP_ADMIN_PASSWORD;
 
@@ -46,7 +35,6 @@ export async function POST(request: NextRequest) {
 
   // Handle account/identity changes
   if (evt.type === "identity") {
-    const { upsertAccount, deleteAccount } = await loadLegacyQueries();
     if (evt.status === "deleted") {
       await deleteAccount(evt.did);
     } else {
@@ -66,7 +54,6 @@ export async function POST(request: NextRequest) {
     if (evt.collection.startsWith(SMELLGATE_NSID_PREFIX)) {
       await dispatchSmellgateEvent(getDb(), evt);
     } else if (evt.collection === STATUSPHERE_COLLECTION) {
-      const { insertStatus, deleteStatus } = await loadLegacyQueries();
       const uri = AtUri.make(evt.did, evt.collection, evt.rkey);
 
       if (evt.action === "create" || evt.action === "update") {
