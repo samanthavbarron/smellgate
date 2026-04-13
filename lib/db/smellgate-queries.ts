@@ -481,16 +481,45 @@ export async function getReviewsForPerfume(
 }
 
 /**
+ * Fetch a single review row by AT-URI. Matches the shape of
+ * `getPerfumeByUri`: returns `null` when the review isn't in the
+ * cache. Used by the comment composer page to recover the review's
+ * parent perfume so it can render a context header and compute the
+ * redirect target after post.
+ */
+export async function getReviewByUri(
+  db: Db,
+  uri: string,
+): Promise<SmellgateReviewTable | null> {
+  const row = await db
+    .selectFrom("smellgate_review")
+    .selectAll()
+    .where("uri", "=", uri)
+    .executeTakeFirst();
+  return row ?? null;
+}
+
+/**
  * Descriptions of a perfume with vote tallies and a score,
  * score-descending. "Score" is `up - down`, where each author
  * contributes at most one vote per description (their most recent,
  * per docs/lexicons.md). Ties break on `indexed_at DESC` so new
  * content surfaces above older content at the same score.
  *
- * The aggregation subquery builds, per description URI, the set of
- * "most recent vote per (author, subject)" and sums them into up /
- * down counts. It's a single SQL statement; the assembly in JS is
- * just attaching the aggregate to each description row.
+ * Sorting + pagination happen in SQL — we can't fetch every
+ * description for a perfume just to JS-sort-and-slice. To do that we
+ * need the up/down counts in the same statement as the description
+ * rows, so the server can `ORDER BY score DESC, indexed_at DESC
+ * LIMIT ? OFFSET ?`.
+ *
+ * The aggregation preserves the "one vote per (author, subject), most
+ * recent wins" rule from docs/lexicons.md. The shape is identical to
+ * `loadVoteTallies`: a correlated `NOT EXISTS` against a `v2` alias
+ * filters out every vote row that is not the latest from its author
+ * for its subject. We then `GROUP BY subject_uri, direction` and
+ * pivot up/down at the SQL layer via `SUM(CASE WHEN direction = 'up'
+ * THEN count ELSE 0 END)` so the outer query has a single score
+ * column to sort on.
  */
 export async function getDescriptionsForPerfume(
   db: Db,
@@ -499,34 +528,73 @@ export async function getDescriptionsForPerfume(
 ): Promise<DescriptionWithVotes[]> {
   const { limit, offset } = paged(opts);
 
-  const descriptions = await db
-    .selectFrom("smellgate_description")
-    .selectAll()
-    .where("perfume_uri", "=", perfumeUri)
+  // Subquery: for each description URI, compute the deduped up/down
+  // tallies. Same correlated NOT EXISTS pattern used by
+  // `loadVoteTallies` — CRITICAL, don't replace this with a naive
+  // COUNT(*) or we lose the "most recent vote per author" rule.
+  const votesAgg = db
+    .selectFrom("smellgate_vote as v")
+    .select([
+      "v.subject_uri as subject_uri",
+      sql<number>`sum(case when v.direction = 'up' then 1 else 0 end)`.as(
+        "up_count",
+      ),
+      sql<number>`sum(case when v.direction = 'down' then 1 else 0 end)`.as(
+        "down_count",
+      ),
+    ])
+    .where((eb) =>
+      eb.not(
+        eb.exists(
+          eb
+            .selectFrom("smellgate_vote as v2")
+            .select(sql<number>`1`.as("one"))
+            .whereRef("v2.author_did", "=", "v.author_did")
+            .whereRef("v2.subject_uri", "=", "v.subject_uri")
+            .whereRef("v2.indexed_at", ">", "v.indexed_at"),
+        ),
+      ),
+    )
+    .groupBy("v.subject_uri");
+
+  const rows = await db
+    .selectFrom("smellgate_description as d")
+    .leftJoin(votesAgg.as("vt"), "vt.subject_uri", "d.uri")
+    .where("d.perfume_uri", "=", perfumeUri)
+    .select((eb) => [
+      "d.uri",
+      "d.cid",
+      "d.author_did",
+      "d.indexed_at",
+      "d.perfume_uri",
+      "d.perfume_cid",
+      "d.body",
+      "d.created_at",
+      eb.fn.coalesce("vt.up_count", sql<number>`0`).as("up_count"),
+      eb.fn.coalesce("vt.down_count", sql<number>`0`).as("down_count"),
+      sql<number>`coalesce(vt.up_count, 0) - coalesce(vt.down_count, 0)`.as(
+        "score",
+      ),
+    ])
+    .orderBy("score", "desc")
+    .orderBy("d.indexed_at", "desc")
+    .limit(limit)
+    .offset(offset)
     .execute();
-  if (descriptions.length === 0) return [];
 
-  const tallyByUri = await loadVoteTallies(
-    db,
-    descriptions.map((d) => d.uri),
-  );
-
-  const enriched: DescriptionWithVotes[] = descriptions.map((d) => {
-    const t = tallyByUri.get(d.uri) ?? { up: 0, down: 0 };
-    return {
-      ...d,
-      up_count: t.up,
-      down_count: t.down,
-      score: t.up - t.down,
-    };
-  });
-
-  enriched.sort((a, b) => {
-    if (b.score !== a.score) return b.score - a.score;
-    return b.indexed_at - a.indexed_at;
-  });
-
-  return enriched.slice(offset, offset + limit);
+  return rows.map((r) => ({
+    uri: r.uri,
+    cid: r.cid,
+    author_did: r.author_did,
+    indexed_at: r.indexed_at,
+    perfume_uri: r.perfume_uri,
+    perfume_cid: r.perfume_cid,
+    body: r.body,
+    created_at: r.created_at,
+    up_count: Number(r.up_count),
+    down_count: Number(r.down_count),
+    score: Number(r.score),
+  }));
 }
 
 /**
@@ -580,6 +648,40 @@ export async function getCommentsForReview(
     .limit(limit)
     .offset(offset)
     .execute();
+}
+
+/**
+ * Batch-fetch comments for many review URIs in a single query.
+ * Returns a Map keyed by review URI → comment rows (oldest-first
+ * within each review, matching `getCommentsForReview`). Review URIs
+ * with no comments are NOT present in the map — callers should
+ * default to `[]`.
+ *
+ * This replaces the `Promise.all(reviews.map(getCommentsForReview))`
+ * N+1 pattern on the perfume detail page. One `WHERE subject_uri IN
+ * (...)` query, grouped client-side. Intentionally does not take
+ * `PaginationOpts`: "all comments for the first page of reviews" is
+ * the only consumer and the overall output is already bounded by the
+ * review-page pagination upstream.
+ */
+export async function getCommentsForReviews(
+  db: Db,
+  reviewUris: string[],
+): Promise<Map<string, SmellgateCommentTable[]>> {
+  const byReview = new Map<string, SmellgateCommentTable[]>();
+  if (reviewUris.length === 0) return byReview;
+  const rows = await db
+    .selectFrom("smellgate_comment")
+    .selectAll()
+    .where("subject_uri", "in", reviewUris)
+    .orderBy("indexed_at", "asc")
+    .execute();
+  for (const row of rows) {
+    const arr = byReview.get(row.subject_uri);
+    if (arr) arr.push(row);
+    else byReview.set(row.subject_uri, [row]);
+  }
+  return byReview;
 }
 
 // ---------------------------------------------------------------------------

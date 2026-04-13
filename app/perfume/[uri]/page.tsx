@@ -28,7 +28,7 @@ import {
   getPerfumeByUri,
   getReviewsForPerfume,
   getDescriptionsForPerfume,
-  getCommentsForReview,
+  getCommentsForReviews,
   type DescriptionWithVotes,
 } from "@/lib/db/smellgate-queries";
 import type {
@@ -66,16 +66,18 @@ export default async function PerfumeDetailPage({
     getDescriptionsForPerfume(db, uri),
   ]);
 
+  // Batch-fetch all comments for the visible reviews in one query
+  // (#75) — replaces an N+1 `Promise.all(map(getCommentsForReview))`.
+  const commentsByReview = await getCommentsForReviews(
+    db,
+    reviews.map((r) => r.uri),
+  );
+
   // Resolve author handles for everyone displayed on the page. One
   // lookup per unique DID; `getAccountHandle` already falls back to
   // Tap's identity resolver if the account isn't in the local cache.
-  const commentsByReview = new Map<string, SmellgateCommentTable[]>();
-  await Promise.all(
-    reviews.map(async (r) => {
-      commentsByReview.set(r.uri, await getCommentsForReview(db, r.uri));
-    }),
-  );
-
+  // Per-DID parallel fetch here: `lib/db/queries.ts` doesn't expose a
+  // batched `getAccountHandles` today; follow-up tracked in #75.
   const dids = new Set<string>();
   for (const r of reviews) dids.add(r.author_did);
   for (const d of descriptions) dids.add(d.author_did);
