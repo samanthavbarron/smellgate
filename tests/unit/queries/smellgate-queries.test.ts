@@ -796,6 +796,217 @@ describe("smellgate-queries", () => {
     });
   });
 
+  describe("getReviewByUri", () => {
+    it("returns the review row when it exists", async () => {
+      const p = await seedPerfume(env.db, { name: "P", house: "H" });
+      const r = await seedReview(env.db, USER_A, p, "body");
+      const got = await env.q.getReviewByUri(env.db.getDb(), r);
+      expect(got).not.toBeNull();
+      expect(got!.uri).toBe(r);
+      expect(got!.author_did).toBe(USER_A);
+      expect(got!.perfume_uri).toBe(p);
+      expect(got!.body).toBe("body");
+    });
+
+    it("returns null when the review does not exist", async () => {
+      const got = await env.q.getReviewByUri(
+        env.db.getDb(),
+        "at://did:plc:nobody/com.smellgate.review/ghost",
+      );
+      expect(got).toBeNull();
+    });
+  });
+
+  describe("getRecentPerfumes", () => {
+    it("returns [] when the cache is empty", async () => {
+      const got = await env.q.getRecentPerfumes(env.db.getDb());
+      expect(got).toEqual([]);
+    });
+
+    it("orders by indexed_at DESC, with notes attached", async () => {
+      const p1 = await seedPerfume(env.db, {
+        name: "First",
+        house: "H",
+        notes: ["rose"],
+      });
+      const p2 = await seedPerfume(env.db, {
+        name: "Second",
+        house: "H",
+        notes: ["oud"],
+      });
+      const p3 = await seedPerfume(env.db, {
+        name: "Third",
+        house: "H",
+      });
+      const got = await env.q.getRecentPerfumes(env.db.getDb());
+      expect(got.map((p) => p.uri)).toEqual([p3, p2, p1]);
+      const byUri = new Map(got.map((p) => [p.uri, p]));
+      expect(byUri.get(p1)!.notes).toEqual(["rose"]);
+      expect(byUri.get(p2)!.notes).toEqual(["oud"]);
+      expect(byUri.get(p3)!.notes).toEqual([]);
+    });
+
+    it("respects the limit option", async () => {
+      for (let i = 0; i < 5; i += 1) {
+        await seedPerfume(env.db, { name: `P${i}`, house: "H" });
+      }
+      const got = await env.q.getRecentPerfumes(env.db.getDb(), { limit: 2 });
+      expect(got).toHaveLength(2);
+    });
+  });
+
+  describe("getRecentReviews", () => {
+    it("returns [] when the cache is empty", async () => {
+      const got = await env.q.getRecentReviews(env.db.getDb());
+      expect(got).toEqual([]);
+    });
+
+    it("orders by indexed_at DESC and joins the perfume slice", async () => {
+      const p1 = await seedPerfume(env.db, { name: "Alpha", house: "Houze" });
+      const p2 = await seedPerfume(env.db, { name: "Beta", house: "Other" });
+      const r1 = await seedReview(env.db, USER_A, p1, "one");
+      const r2 = await seedReview(env.db, USER_B, p2, "two");
+      const r3 = await seedReview(env.db, USER_C, p1, "three");
+
+      const got = await env.q.getRecentReviews(env.db.getDb());
+      expect(got.map((r) => r.uri)).toEqual([r3, r2, r1]);
+      const byUri = new Map(got.map((r) => [r.uri, r]));
+      expect(byUri.get(r1)!.perfume).toEqual({
+        uri: p1,
+        name: "Alpha",
+        house: "Houze",
+      });
+      expect(byUri.get(r2)!.perfume).toEqual({
+        uri: p2,
+        name: "Beta",
+        house: "Other",
+      });
+    });
+
+    it("returns perfume: null when the referenced perfume row is missing", async () => {
+      const missing = atUri(CURATOR, "com.smellgate.perfume", "ghost");
+      await seedReview(env.db, USER_A, missing, "orphan");
+      const got = await env.q.getRecentReviews(env.db.getDb());
+      expect(got).toHaveLength(1);
+      expect(got[0].perfume).toBeNull();
+    });
+
+    it("respects the limit option", async () => {
+      const p = await seedPerfume(env.db, { name: "P", house: "H" });
+      for (let i = 0; i < 5; i += 1) {
+        await seedReview(env.db, USER_A, p, `body${i}`);
+      }
+      const got = await env.q.getRecentReviews(env.db.getDb(), { limit: 2 });
+      expect(got).toHaveLength(2);
+    });
+  });
+
+  describe("getCommentsForReviews", () => {
+    it("returns an empty map for an empty input", async () => {
+      const got = await env.q.getCommentsForReviews(env.db.getDb(), []);
+      expect(got.size).toBe(0);
+    });
+
+    it("groups comments by review URI, oldest first per review, in one query", async () => {
+      const p = await seedPerfume(env.db, { name: "P", house: "H" });
+      const r1 = await seedReview(env.db, USER_A, p);
+      const r2 = await seedReview(env.db, USER_B, p);
+      const r3 = await seedReview(env.db, USER_C, p); // no comments
+      const c1a = await seedComment(env.db, USER_B, r1, "first r1");
+      const c1b = await seedComment(env.db, USER_C, r1, "second r1");
+      const c2a = await seedComment(env.db, USER_A, r2, "first r2");
+
+      const got = await env.q.getCommentsForReviews(env.db.getDb(), [
+        r1,
+        r2,
+        r3,
+      ]);
+      expect(got.get(r1)!.map((c) => c.uri)).toEqual([c1a, c1b]);
+      expect(got.get(r2)!.map((c) => c.uri)).toEqual([c2a]);
+      expect(got.has(r3)).toBe(false);
+    });
+
+    it("ignores comments on reviews not in the input set", async () => {
+      const p = await seedPerfume(env.db, { name: "P", house: "H" });
+      const r1 = await seedReview(env.db, USER_A, p);
+      const r2 = await seedReview(env.db, USER_A, p);
+      await seedComment(env.db, USER_B, r2, "on r2");
+
+      const got = await env.q.getCommentsForReviews(env.db.getDb(), [r1]);
+      expect(got.size).toBe(0);
+    });
+  });
+
+  describe("getDescriptionsForPerfume — SQL pagination (#52)", () => {
+    it("sorts by score DESC in SQL and applies limit/offset, preserving the author-dedupe rule", async () => {
+      const p = await seedPerfume(env.db, { name: "P", house: "H" });
+      // Seed 5 descriptions with varied scores.
+      const d1 = await seedDescription(env.db, USER_A, p, "d1"); // score 3
+      const d2 = await seedDescription(env.db, USER_B, p, "d2"); // score 1
+      const d3 = await seedDescription(env.db, USER_C, p, "d3"); // score 0 (dedupe trap)
+      const d4 = await seedDescription(env.db, USER_A, p, "d4"); // score 2
+      const d5 = await seedDescription(env.db, USER_B, p, "d5"); // score -1
+
+      // d1: +3 / -0 = 3
+      await seedVote(env.db, USER_B, d1, "up");
+      await seedVote(env.db, USER_C, d1, "up");
+      await seedVote(env.db, USER_A, d1, "up");
+      // d2: +1 / -0 = 1
+      await seedVote(env.db, USER_A, d2, "up");
+      // d3 — this is the dedupe trap. Without the NOT EXISTS filter,
+      // these four rows would naively count as +3/-1 = 2 (tying d4),
+      // bumping d3 into the top page even though USER_B's latest
+      // vote is `down` and USER_C's latest vote is `down`:
+      //   USER_B: up → down (latest: down)
+      //   USER_C: up → down (latest: down)
+      //   USER_A: (no vote)
+      // Deduped: +0 / -2 = -2. Not +3 / -1 = 2.
+      await seedVote(env.db, USER_B, d3, "up");
+      await seedVote(env.db, USER_C, d3, "up");
+      await seedVote(env.db, USER_B, d3, "down");
+      await seedVote(env.db, USER_C, d3, "down");
+      // d4: +2 / -0 = 2
+      await seedVote(env.db, USER_B, d4, "up");
+      await seedVote(env.db, USER_C, d4, "up");
+      // d5: +0 / -1 = -1
+      await seedVote(env.db, USER_A, d5, "down");
+
+      const all = await env.q.getDescriptionsForPerfume(env.db.getDb(), p);
+      // Expected order (score DESC, indexed_at DESC on ties):
+      //   d1 (3), d4 (2), d2 (1), d5 (-1), d3 (-2)
+      expect(all.map((d) => d.uri)).toEqual([d1, d4, d2, d5, d3]);
+      expect(all.map((d) => d.score)).toEqual([3, 2, 1, -1, -2]);
+      // d3 specifically should be LAST, not second — if the dedupe
+      // had been dropped this test would fail because d3 would
+      // naively score +3 / -1 = 2.
+      const d3Row = all.find((d) => d.uri === d3)!;
+      expect(d3Row.up_count).toBe(0);
+      expect(d3Row.down_count).toBe(2);
+      expect(d3Row.score).toBe(-2);
+
+      // Pagination — limit 2, offset 0 returns the top 2.
+      const page1 = await env.q.getDescriptionsForPerfume(env.db.getDb(), p, {
+        limit: 2,
+        offset: 0,
+      });
+      expect(page1.map((d) => d.uri)).toEqual([d1, d4]);
+
+      // Pagination — limit 2, offset 2 returns the next slice.
+      const page2 = await env.q.getDescriptionsForPerfume(env.db.getDb(), p, {
+        limit: 2,
+        offset: 2,
+      });
+      expect(page2.map((d) => d.uri)).toEqual([d2, d5]);
+
+      // Pagination — limit 2, offset 4 returns the tail.
+      const page3 = await env.q.getDescriptionsForPerfume(env.db.getDb(), p, {
+        limit: 2,
+        offset: 4,
+      });
+      expect(page3.map((d) => d.uri)).toEqual([d3]);
+    });
+  });
+
   describe("getResolutionForSubmission", () => {
     it("returns the resolution row", async () => {
       const s = await seedSubmission(env.db, USER_A, "alpha");

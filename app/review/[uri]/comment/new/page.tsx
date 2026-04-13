@@ -5,17 +5,17 @@
  * `com.smellgate.review`. The URL segment is the review's AT-URI,
  * URL-encoded (same convention as `/perfume/[uri]`).
  *
- * We load the review row directly from the cache to recover its
- * parent `perfume_uri`, then load that perfume for the context
- * header and as the redirect target on successful post. There's no
- * `getReviewByUri` helper in `lib/db/smellgate-queries.ts` today and
- * that module is read-only at this phase, so the tiny `selectFrom`
- * below inlines the lookup rather than widening the query layer.
+ * We load the review row via `getReviewByUri` to recover its parent
+ * `perfume_uri`, then load that perfume for the context header and
+ * as the redirect target on successful post.
  */
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getDb } from "@/lib/db";
-import { getPerfumeByUri } from "@/lib/db/smellgate-queries";
+import {
+  getPerfumeByUri,
+  getReviewByUri,
+} from "@/lib/db/smellgate-queries";
 import { getSession } from "@/lib/auth/session";
 import { CommentComposer } from "@/components/forms/CommentComposer";
 
@@ -31,11 +31,7 @@ export default async function WriteCommentPage({
 
   const db = getDb();
   const session = await getSession();
-  const reviewRow = await db
-    .selectFrom("smellgate_review")
-    .select(["uri", "perfume_uri"])
-    .where("uri", "=", reviewUri)
-    .executeTakeFirst();
+  const reviewRow = await getReviewByUri(db, reviewUri);
   if (!reviewRow) notFound();
 
   const perfume = await getPerfumeByUri(db, reviewRow.perfume_uri);
