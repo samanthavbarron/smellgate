@@ -302,6 +302,59 @@ export async function getPerfumesByHouse(
   return attachNotes(db, perfumes);
 }
 
+/**
+ * Case-insensitive substring search over `smellgate_perfume.name` and
+ * `smellgate_perfume.house` (Phase 4.F, issue #71).
+ *
+ * Implementation notes:
+ *
+ * - Matches are case-insensitive via `LOWER(col) LIKE LOWER(?)`. We do
+ *   not rely on SQLite's `PRAGMA case_sensitive_like` because that's a
+ *   connection-wide flag and we don't want to perturb other queries.
+ * - The user's query is bound as a parameter; we never concatenate it
+ *   into SQL. `%` and `_` inside the user input are escaped with a
+ *   literal backslash so they behave as plain characters, and the
+ *   `LIKE ... ESCAPE '\\'` clause tells SQLite about our escape char.
+ * - LIKE `%query%` can't use the `name` / `house` btree indexes — this
+ *   is a table scan. Fine for the current small cache; won't scale
+ *   past ~10K perfumes without FTS. Deliberately not implementing FTS
+ *   in this phase.
+ * - Empty / whitespace-only queries short-circuit to `[]` so we never
+ *   accidentally LIKE `%%` and return the whole catalog.
+ * - Ordering is `name ASC` for deterministic output; no relevance
+ *   scoring.
+ */
+export async function searchPerfumes(
+  db: Db,
+  query: string,
+  opts?: PaginationOpts,
+): Promise<PerfumeWithNotes[]> {
+  const { limit, offset } = paged(opts);
+  const trimmed = query.trim();
+  if (trimmed.length === 0) return [];
+
+  // Escape LIKE metacharacters so a user searching for "50%" doesn't
+  // get wildcard behaviour. Backslash is the escape char declared in
+  // the ESCAPE clause below.
+  const escaped = trimmed
+    .replace(/\\/g, "\\\\")
+    .replace(/%/g, "\\%")
+    .replace(/_/g, "\\_");
+  const pattern = `%${escaped.toLowerCase()}%`;
+
+  const perfumes = await db
+    .selectFrom("smellgate_perfume")
+    .selectAll()
+    .where(
+      sql<boolean>`lower(name) like ${pattern} escape '\\' or lower(house) like ${pattern} escape '\\'`,
+    )
+    .orderBy("name", "asc")
+    .limit(limit)
+    .offset(offset)
+    .execute();
+  return attachNotes(db, perfumes);
+}
+
 export async function getPerfumesByCreator(
   db: Db,
   creator: string,
