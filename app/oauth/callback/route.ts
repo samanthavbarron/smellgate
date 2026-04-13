@@ -17,14 +17,20 @@ export async function GET(request: NextRequest) {
     // check whether this user has any pending `com.smellgate.*` records
     // whose submission has been resolved since the last login, and
     // rewrite their strongRefs to the canonical perfume in place on
-    // their PDS. Best-effort: any failure is logged and does not fail
-    // the login. See `lib/server/smellgate-curator-actions.ts` and
+    // their PDS. See `lib/server/smellgate-curator-actions.ts` and
     // docs/lexicons.md §"The submission → canonical flow".
-    try {
-      await rewritePendingRecords(getDb(), session);
-    } catch (rewriteErr) {
-      console.warn("rewritePendingRecords on login failed:", rewriteErr);
-    }
+    //
+    // Fire-and-forget (#62): the rewrite can take seconds against the
+    // user's PDS and we don't want to make login wait on it. Errors
+    // are swallowed and logged — the next login will retry, because
+    // `rewritePendingRecords` recomputes the pending set from the
+    // cache every time. This assumes the Node.js runtime: Next.js
+    // Edge functions abort dangling promises when the response is
+    // sent, but this route runs on Node (see next.config and the
+    // absence of `export const runtime = "edge"`).
+    void rewritePendingRecords(getDb(), session).catch((err) => {
+      console.warn("[callback] rewrite failed", err);
+    });
 
     const response = NextResponse.redirect(new URL("/", PUBLIC_URL));
 

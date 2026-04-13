@@ -787,97 +787,53 @@ export interface PendingRewrite {
   decision: "approved" | "duplicate";
 }
 
-async function selectPendingShelfItems(
-  db: Db,
-  authorDid: string,
-): Promise<PendingRewrite[]> {
-  const rows = await db
-    .selectFrom("smellgate_shelf_item as u")
-    .innerJoin(
-      "smellgate_perfume_submission as s",
-      "s.uri",
-      "u.perfume_uri",
-    )
-    .innerJoin(
-      "smellgate_perfume_submission_resolution as r",
-      "r.submission_uri",
-      "s.uri",
-    )
-    .where("u.author_did", "=", authorDid)
-    .where("r.perfume_uri", "is not", null)
-    .where("r.decision", "in", ["approved", "duplicate"])
-    .select([
-      "u.uri as recordUri",
-      "u.cid as recordCid",
-      "s.uri as submissionUri",
-      "r.perfume_uri as newPerfumeUri",
-      "r.perfume_cid as newPerfumeCid",
-      "r.uri as resolutionUri",
-      "r.decision as decision",
-    ])
-    .execute();
-  return rows.map((r) => ({
-    recordUri: r.recordUri,
-    recordCid: r.recordCid,
-    submissionUri: r.submissionUri,
-    newPerfumeUri: r.newPerfumeUri!,
-    newPerfumeCid: r.newPerfumeCid!,
-    resolutionUri: r.resolutionUri,
-    decision: r.decision as "approved" | "duplicate",
-  }));
-}
+/**
+ * The three user-record tables the rewrite mechanic walks. Each is
+ * joined against `smellgate_perfume_submission` and
+ * `smellgate_perfume_submission_resolution` with the same shape — the
+ * only thing that varies is which table supplies the `uri` / `cid` /
+ * `author_did` / `perfume_uri` columns. Factored into a single helper
+ * to keep the three `selectPending*` entry points from diverging
+ * (#64).
+ *
+ * All three user tables (`smellgate_shelf_item`, `smellgate_review`,
+ * `smellgate_description`) carry the same join-relevant columns
+ * (`uri`, `cid`, `author_did`, `perfume_uri`) with matching types —
+ * see `lib/db/index.ts`. We build the Kysely query once, parameterized
+ * by table name. Per-table column types come out as a union in the
+ * typed query builder, which Kysely has no trouble resolving because
+ * every referenced column resolves to the same type on every branch
+ * of the union.
+ */
+type PendingUserTable =
+  | "smellgate_shelf_item"
+  | "smellgate_review"
+  | "smellgate_description";
 
-async function selectPendingReviews(
+async function selectPendingFrom(
   db: Db,
+  table: PendingUserTable,
   authorDid: string,
 ): Promise<PendingRewrite[]> {
-  const rows = await db
-    .selectFrom("smellgate_review as u")
-    .innerJoin(
-      "smellgate_perfume_submission as s",
-      "s.uri",
-      "u.perfume_uri",
-    )
-    .innerJoin(
-      "smellgate_perfume_submission_resolution as r",
-      "r.submission_uri",
-      "s.uri",
-    )
-    .where("u.author_did", "=", authorDid)
-    .where("r.perfume_uri", "is not", null)
-    .where("r.decision", "in", ["approved", "duplicate"])
-    .select([
-      "u.uri as recordUri",
-      "u.cid as recordCid",
-      "s.uri as submissionUri",
-      "r.perfume_uri as newPerfumeUri",
-      "r.perfume_cid as newPerfumeCid",
-      "r.uri as resolutionUri",
-      "r.decision as decision",
-    ])
-    .execute();
-  return rows.map((r) => ({
-    recordUri: r.recordUri,
-    recordCid: r.recordCid,
-    submissionUri: r.submissionUri,
-    newPerfumeUri: r.newPerfumeUri!,
-    newPerfumeCid: r.newPerfumeCid!,
-    resolutionUri: r.resolutionUri,
-    decision: r.decision as "approved" | "duplicate",
-  }));
-}
+  // Cast the Kysely schema so `selectFrom(table)` accepts the
+  // runtime-determined table name against a narrowed "shape that all
+  // three tables share". This is still fully type-checked: the
+  // columns we reference below (`u.uri`, `u.cid`, `u.author_did`,
+  // `u.perfume_uri`) exist on all three tables and have identical
+  // types, so the single query body covers every concrete call.
+  type UserShape = {
+    uri: string;
+    cid: string;
+    author_did: string;
+    perfume_uri: string;
+  };
+  type NarrowedDb = Kysely<
+    Omit<DatabaseSchema, PendingUserTable> & Record<PendingUserTable, UserShape>
+  >;
 
-async function selectPendingDescriptions(
-  db: Db,
-  authorDid: string,
-): Promise<PendingRewrite[]> {
-  const rows = await db
-    .selectFrom("smellgate_description as u")
-    .innerJoin(
-      "smellgate_perfume_submission as s",
-      "s.uri",
-      "u.perfume_uri",
-    )
+  const rows = await (db as unknown as NarrowedDb)
+    .selectFrom(`${table} as u`)
+    .innerJoin("smellgate_perfume_submission as s", "s.uri", "u.perfume_uri")
     .innerJoin(
       "smellgate_perfume_submission_resolution as r",
       "r.submission_uri",
@@ -922,9 +878,9 @@ export async function getPendingRecordsForUser(
   descriptions: PendingRewrite[];
 }> {
   const [shelfItems, reviews, descriptions] = await Promise.all([
-    selectPendingShelfItems(db, authorDid),
-    selectPendingReviews(db, authorDid),
-    selectPendingDescriptions(db, authorDid),
+    selectPendingFrom(db, "smellgate_shelf_item", authorDid),
+    selectPendingFrom(db, "smellgate_review", authorDid),
+    selectPendingFrom(db, "smellgate_description", authorDid),
   ]);
   return { shelfItems, reviews, descriptions };
 }

@@ -409,6 +409,19 @@ async function rewriteOne(
  * it currently lives in the cache pointing at a submission URI that
  * has a non-null `perfume` on its resolution — rejections are not
  * candidates at all.
+ *
+ * Cache-lag caveat on first login (#63): the pending-set query reads
+ * from the local Tap read cache. If a curator writes a resolution
+ * seconds before the user logs in, the firehose event may not have
+ * been indexed yet — the resolution row is absent from the cache, so
+ * the rewrite query returns nothing and the user's records remain
+ * pending. This is deliberately unfixed: no retry loop, no "wait for
+ * event" polling. The next login recomputes the pending set from the
+ * same cache and, by that time, the resolution will have been
+ * indexed, so the rewrite lands on the second attempt. The cost of a
+ * single extra login vs. the complexity of a retry loop tilts clearly
+ * toward "just wait for the next login". See docs/lexicons.md §"The
+ * submission → canonical flow" step 6 for the full flow.
  */
 export async function rewritePendingRecords(
   db: Db,
