@@ -53,11 +53,12 @@
  *
  * The lexicon (`lexicons/com/smellgate/perfume.json`) specifies
  * `record.key: "tid"`, so the rkey must conform to the TID shape
- * (13 characters, base32-sortable). `seedRkey` builds one by
- * SHA-256'ing the seed id and encoding 13 base32 digits out of the
- * digest — deterministic, collision-free across ~40 entries, and
- * accepted by `com.atproto.repo.putRecord` exactly the same way a
- * server-minted TID is.
+ * (13 characters, base32-sortable, with the first character drawn
+ * from the low-16 subset per `@atproto/syntax`'s `isValidTid`).
+ * `seedRkey` builds one by SHA-256'ing the seed id and encoding 13
+ * digits out of the digest — deterministic, collision-free across
+ * the 75-entry fixture, and accepted by `com.atproto.repo.putRecord`
+ * exactly the same way a server-minted TID is.
  *
  * ## Usage
  *
@@ -81,15 +82,26 @@ const TID_LEN = 13
 
 /**
  * Deterministic, TID-shaped rkey for a seed entry. Hashes the seed
- * id with SHA-256, then consumes 65 bits (13 × 5) of the digest,
- * five bits at a time, into base32-sortable characters. The result
- * is a 13-char string in the same alphabet `@atproto/common-web`
- * uses for server-minted TIDs and is therefore accepted by any PDS
- * that expects `record.key: "tid"` — the PDS only checks length and
- * character set, not the embedded timestamp semantics.
+ * id with SHA-256, then walks the digest five bits at a time into
+ * characters of the `234567abcdefghijklmnopqrstuvwxyz`
+ * base32-sortable alphabet used by `@atproto/common-web` for TIDs.
  *
- * Collision-free across the ~40 current seed entries (and far
- * beyond: 2^65 keyspace) because the input id is unique per entry.
+ * CRITICAL — TID format (see `@atproto/syntax/dist/tid.js`):
+ *   /^[234567abcdefghij][234567abcdefghijklmnopqrstuvwxyz]{12}$/
+ * The FIRST character must come from the low-16 subset of the
+ * alphabet. Real TIDs satisfy this because the 53-bit timestamp is
+ * stored in the top bits of a ≤64-bit value whose leading bit is
+ * always 0. `isValidTid` enforces the constraint and a PDS's
+ * `putRecord` rejects rkeys that fail it.
+ *
+ * Fix for #41 review: position 0 masks the 5-bit digest index to
+ * 4 bits (`& 0b01111`) so it can only land in the low-16 subset.
+ * Positions 1-12 keep the full 5-bit range. This trades one bit of
+ * entropy at position 0 for strict TID conformance — still 64 total
+ * bits of hash-derived entropy, far more than needed for
+ * collision-freedom across the 75-entry fixture (verified by the
+ * `seedRkey` test).
+ *
  * Stable across runs because the hash is pure.
  */
 export function seedRkey(seedId: string): string {
@@ -107,7 +119,11 @@ export function seedRkey(seedId: string): string {
       byteIdx += 1
       bitCount += 8
     }
-    const idx = (bitBuf >> (bitCount - 5)) & 0b11111
+    // Position 0 must come from the low-16 subset so the result
+    // passes `@atproto/syntax`'s `isValidTid` check. All other
+    // positions use the full 5-bit range.
+    const mask = rkey.length === 0 ? 0b01111 : 0b11111
+    const idx = (bitBuf >> (bitCount - 5)) & mask
     bitCount -= 5
     rkey += S32_CHAR[idx]
   }

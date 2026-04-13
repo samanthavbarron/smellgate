@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
+import { isValidTid } from '@atproto/syntax'
 import { $safeParse } from '../../lib/lexicons/com/smellgate/perfume'
 import { seedRkey } from '../../scripts/seed-catalog'
 
@@ -157,11 +158,14 @@ describe('seed-catalog.json', () => {
 })
 
 describe('seedRkey (#41)', () => {
-  it('produces a 13-character base32-sortable string', () => {
+  it('produces a string that passes @atproto/syntax isValidTid', () => {
     const rkey = seedRkey('seed-042')
     expect(rkey).toHaveLength(13)
-    // TID alphabet per @atproto/common-web util.ts.
-    expect(rkey).toMatch(/^[234567abcdefghijklmnopqrstuvwxyz]{13}$/)
+    // Use the real TID validator from @atproto/syntax, not a loose
+    // regex. isValidTid enforces the full-alphabet-on-all-but-first
+    // / low-16-on-first constraint that bit us in review of the
+    // original implementation.
+    expect(isValidTid(rkey)).toBe(true)
   })
 
   it('is deterministic across calls', () => {
@@ -170,12 +174,15 @@ describe('seedRkey (#41)', () => {
     expect(a).toBe(b)
   })
 
-  it('produces a unique rkey for every seed entry in the fixture', () => {
+  it('produces a valid, unique TID-shaped rkey for every fixture entry', () => {
     const entries = loadCatalog()
     const seen = new Set<string>()
     for (const entry of entries) {
       const rkey = seedRkey(entry._seed.id)
-      expect(rkey).toHaveLength(13)
+      expect(
+        isValidTid(rkey),
+        `seedRkey(${entry._seed.id}) -> ${rkey} failed isValidTid`,
+      ).toBe(true)
       expect(
         seen.has(rkey),
         `collision: ${rkey} for ${entry._seed.id}`,
