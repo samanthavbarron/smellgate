@@ -15,6 +15,8 @@
     "seed:catalog": "tsx scripts/seed-catalog.ts",
     "seed:catalog:dry-run": "tsx scripts/seed-catalog.ts --dry-run",
     "dev:seed-cache": "pnpm migrate && tsx scripts/seed-cache-from-fixtures.ts",
+    "dev:network": "tsx scripts/dev-network.ts",
+    "agent:as": "tsx scripts/agent-as.ts",
     "cache:rebuild": "tsx scripts/rebuild-cache.ts",
     "cache:rebuild:dry-run": "tsx scripts/rebuild-cache.ts --dry-run",
     "lint": "eslint",
