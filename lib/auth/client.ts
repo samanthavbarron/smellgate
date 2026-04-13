@@ -18,6 +18,20 @@ let client: NodeOAuthClient | null = null;
 const PUBLIC_URL = process.env.PUBLIC_URL;
 const PRIVATE_KEY = process.env.PRIVATE_KEY;
 
+/**
+ * Optional dev-only escape hatch for pointing the OAuth client at a local
+ * in-process PDS + PLC spun up by `scripts/dev-network.ts`. BOTH must be
+ * set for the gate to engage; if either is unset, production/loopback
+ * behavior is completely unchanged. No localhost fallback.
+ *
+ * SECURITY: do not read these in production. They are only consulted at
+ * client construction. Unset in real deploys and the `NodeOAuthClient`
+ * defaults (real `plc.directory`, real DNS handle resolution) apply.
+ */
+const DEV_HANDLE_RESOLVER = process.env.SMELLGATE_DEV_HANDLE_RESOLVER;
+const DEV_PLC_URL = process.env.SMELLGATE_DEV_PLC_URL;
+const DEV_NETWORK_ENABLED = Boolean(DEV_HANDLE_RESOLVER && DEV_PLC_URL);
+
 function getClientMetadata(): OAuthClientMetadataInput {
   if (PUBLIC_URL) {
     // Hosted-path metadata. The `client_id` MUST be a URL the auth server
@@ -63,6 +77,17 @@ export async function getOAuthClient(): Promise<NodeOAuthClient> {
   client = new NodeOAuthClient({
     clientMetadata: getClientMetadata(),
     keyset: await getKeyset(),
+
+    // Dev-network gate: when both env vars are set (by `pnpm dev:network`),
+    // resolve handles + DIDs against the local in-process PDS/PLC instead
+    // of the public ones. Both unset = production defaults, untouched.
+    ...(DEV_NETWORK_ENABLED
+      ? {
+          allowHttp: true,
+          handleResolver: DEV_HANDLE_RESOLVER!,
+          plcDirectoryUrl: DEV_PLC_URL!,
+        }
+      : {}),
 
     stateStore: {
       async get(key: string) {

@@ -46,3 +46,9 @@ next-env.d.ts
 *.db-wal
 *.db-shm
 /lib/lexicons
+
+# Local multi-agent bug-bash setup (#106). The dev network file holds
+# in-process PDS URLs + plaintext test passwords, and the agent session
+# directory holds OAuth `did` cookies — neither belongs in git.
+/.smellgate-dev-env.json
+/.smellgate-agent-sessions/
