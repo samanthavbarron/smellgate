@@ -66,6 +66,11 @@ must always work.
 - Sizes: `text-4xl` (page title), `text-lg` (section heading),
   `text-sm` (body copy, nav, buttons), `text-xs` (metadata, chips,
   timestamps)
+- `text-xl` is allowed for **numeric emphasis / rating gutters** only
+  (e.g. the rating number on review cards, introduced in PR #74). Do
+  not use it for body text or headings. `text-2xl`, `text-3xl`, and
+  `text-5xl` are NOT allowed — if you reach for one, the design needs
+  a conversation, not a one-off override.
 
 ## Shape and spacing
 

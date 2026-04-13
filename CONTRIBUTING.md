@@ -4,19 +4,7 @@
 
 ## Workflow: issue → branch → PR → main
 
-Every change starts as a GitHub issue and lands as a PR. No direct commits to `main`.
-
-```sh
-gh issue list                              # find or claim work
-gh issue view <n>                          # read the scope
-git checkout -b <n>-short-slug             # branch naming
-# ...do the work, commit...
-git push -u origin <n>-short-slug
-gh pr create                               # body must say "Closes #<n>"
-gh pr checks                               # CI must be green before merge
-```
-
-Before starting, also run `gh pr list --search "is:open"` so you don't collide with another agent.
+See [AGENTS.md — Conventions for agents](AGENTS.md#conventions-for-agents).
 
 ## Branch naming
 

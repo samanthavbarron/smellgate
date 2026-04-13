@@ -189,7 +189,7 @@ Plus these cross-cut / organizational labels:
 
 - **Before starting:** `gh issue view <n>`, `gh pr list --search "is:open"`, `git pull`. Confirm nobody else is on it.
 - **Branch name:** `<issue-number>-<short-slug>`.
-- **PR:** link the issue (`Closes #N` — one keyword per issue, GitHub only auto-closes the first one without repeated `closes`), keep under ~400 lines of diff where possible, include a "How I tested" section naming the commands and tests that cover the change, and a "Scope check" section explicitly listing what you did and did not touch.
+- **PR:** link the issue (`Closes #N` when the PR fully resolves it; `Refs #N` for PRs that only partially address an issue without closing it — one keyword per issue, GitHub only auto-closes the first one without repeated `closes`), keep under ~400 lines of diff where possible, include a "How I tested" section naming the commands and tests that cover the change, and a "Scope check" section explicitly listing what you did and did not touch.
 - **Do not merge your own PR without** green CI AND an approved adversarial-review verdict.
 - **After merge:** `gh pr checks` on the merge commit, verify `main` is green, close the issue if `Closes` didn't, clean up the worktree with `git worktree remove --force` + `git branch -D`.
 - **If you get stuck** on an ATProto/lexicon design question, stop and file a design issue rather than guessing. Bad data model decisions are expensive to reverse once records are in the wild.
