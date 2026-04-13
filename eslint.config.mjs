@@ -7,15 +7,24 @@ const eslintConfig = defineConfig([
   ...nextTs,
   // Override default ignores of eslint-config-next.
   globalIgnores([
-    // Default ignores of eslint-config-next:
-    ".next/**",
-    "out/**",
-    "build/**",
-    "next-env.d.ts",
+    // Default ignores of eslint-config-next (re-declared because passing a
+    // custom `ignores` to the flat-config helper replaces the defaults).
+    // Use `**/` prefixes so that sibling git worktrees and any nested copy of
+    // these dirs (e.g. `.claude/worktrees/<name>/.next/`) are also ignored.
+    "**/.next/**",
+    "**/out/**",
+    "**/build/**",
+    "**/next-env.d.ts",
     // Generated lexicon bindings from `pnpm build:lex`. The ts-lex codegen
     // intentionally uses `as any` casts on circular ref initializers; these
     // files are never hand-edited, so linting them is noise.
-    "lib/lexicons/**",
+    "**/lib/lexicons/**",
+    // Sibling git worktrees created by the Claude Code harness live under
+    // `.claude/worktrees/<name>/` and are full checkouts of the repo. Without
+    // this ignore, running `pnpm lint` from the main checkout walks into every
+    // sibling worktree and reports thousands of phantom errors (generated
+    // lexicons, stale `.next/` builds, etc.). See issue #38.
+    ".claude/**",
   ]),
 ]);
 

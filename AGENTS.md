@@ -118,7 +118,7 @@ pnpm typecheck           # runs build:lex + tsc --noEmit (self-sufficient, won't
 pnpm test                # Vitest unit tier (90+ tests)
 pnpm test:integration    # Vitest integration tier (in-process PDS; 43+ tests)
 pnpm build               # Next.js production build
-pnpm lint                # ESLint; note: has known local-vs-CI divergence (#38) — trust CI
+pnpm lint                # ESLint flat-config; ignores `.claude/worktrees/**` so sibling worktrees don't leak in (#38)
 pnpm cache:rebuild       # read all records from a source PDS, drop the smellgate cache, re-index
 pnpm cache:rebuild:dry-run
 pnpm seed:catalog        # one-shot production seeder — DO NOT RUN, has bug (#40)
