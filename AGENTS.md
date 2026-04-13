@@ -2,6 +2,17 @@
 
 Guidance for coding agents working on `smellgate`. Read [PLAN.md](PLAN.md) first for the product vision. This file covers **how** we build it.
 
+## Current state (2026-04-13)
+
+Phases 0–4 of the roadmap are all complete. The app is feature-complete end-to-end on localhost, not yet deployed. Remaining work is categorized as **production blockers** (3 items), **P1 polish** (7 items), and a longer tail of P2/P3 follow-ups tracked in GitHub issues.
+
+- **Source of truth for what's left:** issue #86 (the META tracking issue). It groups the remaining work by priority and lists the exact steps needed to ship.
+- **Finding issues by priority:** `gh issue list --label P0-blocker` / `--label P1-critical` / `--label P2-polish` / `--label P3-nice-to-have`
+- **Finding production blockers:** `gh issue list --label "blocker:production"` (currently #1, #40, #85)
+- **Phase 5 (deployment)** is not yet scoped into issues. Do it when the P0s are clear — see the meta issue for the recommended order.
+
+A fresh session resuming this work should: (1) read this file end-to-end, (2) read [docs/lexicons.md](docs/lexicons.md) for the data model, (3) read [docs/ui.md](docs/ui.md) for frontend conventions, (4) look at #86 to see what's next, (5) resume the same loop: pick an issue → spawn an implementation agent in a worktree → spawn a fresh adversarial reviewer → merge.
+
 ## Ground rules
 
 - **ATProto-native, no app database.** User records (shelf entries, reviews, descriptions, comments, votes) live in users' PDSs as records under our custom lexicons. The app is a view over the network, not a system of record. The only local storage is the auth session store and a Tap-fed read cache — never treat it as authoritative.
@@ -34,7 +45,7 @@ Every non-trivial PR opened by a coding agent must be reviewed by a **separate a
 - **Spawn a fresh subagent** for the review. It should not share context with the agent that wrote the PR — that's the whole point. Give it the PR URL, the linked issue, and [AGENTS.md](AGENTS.md) + [docs/lexicons.md](docs/lexicons.md), and ask it to report problems.
 - **What the reviewer looks for:**
   - Does the PR actually close the issue as written, or is it solving a subtly different problem?
-  - Are the tests real? A unit test that imports mocks and asserts on the mocks is not a test. Integration tests must hit the local PDS (see #7), not mocks.
+  - Are the tests real? A unit test that imports mocks and asserts on the mocks is not a test. Integration tests must hit the local in-process PDS from `tests/helpers/pds.ts`, not mocks.
   - Is anything in the diff out of scope for the linked issue? Unrelated "while I'm here" cleanups should be split out.
   - Does the PR violate any rule in [AGENTS.md](AGENTS.md) — new product DB, mocked PDS calls, direct commits to `main`, etc.?
   - For data-model PRs: does the change match [docs/lexicons.md](docs/lexicons.md) exactly? If the PR diverges from the doc, either the doc or the PR is wrong — flag it.
@@ -47,99 +58,175 @@ Every non-trivial PR opened by a coding agent must be reviewed by a **separate a
 
 The goal is not ceremony. The goal is: two independent agents looked at this, and the one whose job was to find problems didn't find any it cared about.
 
-## Repo layout (inherited from statusphere starter)
+## Repo layout
 
-- [app/](app/) — Next.js app router, routes and server actions
+- [app/](app/) — Next.js app router (Turbopack)
+  - `app/page.tsx` — home (recent perfumes + recent reviews)
+  - `app/perfume/[uri]/` — perfume detail + composer routes (shelf/new, review/new, description/new)
+  - `app/tag/{note,house,creator}/[value]/` — tag listing pages
+  - `app/profile/[did]/` + `app/profile/me/` — profile pages
+  - `app/submit/` — new-perfume submission form
+  - `app/review/[uri]/comment/new/` — comment composer
+  - `app/curator/` — curator dashboard (server-gated on `isCurator`)
+  - `app/search/` — substring search
+  - `app/api/smellgate/{shelf,review,description,vote,comment,submission,curator/*}/` — OAuth-gated POST route handlers
+  - `app/api/webhook/` — Tap ingest webhook (dispatches both legacy statusphere and smellgate records)
+  - `app/oauth/{login,logout,callback}/` — OAuth flow routes
 - [components/](components/) — React components
-- [lexicons/xyz/](lexicons/xyz/) — ATProto lexicon JSON. **This is where the data model lives.** Will be renamed/extended under our own NSID (see Phase 1).
-- [lib/auth/](lib/auth/) — OAuth client wiring
-- [lib/db/](lib/db/) — SQLite-backed session + read cache (Kysely). Not a product DB.
-- [lib/tap/](lib/tap/) — Firehose/Tap ingestion for populating the read cache
-- [scripts/](scripts/) — `migrate.ts`, `gen-key.ts`
-
-When in doubt about ATProto plumbing, the starter's patterns (OAuth session, Tap subscription, lexicon codegen via `pnpm build:lex`) are the reference.
+  - `SiteHeader.tsx`, `PerfumeTile.tsx`, `TagPage.tsx` — layout primitives
+  - `components/forms/` — client composer forms (Shelf, Review, Description, Vote, Comment, PerfumeSubmission)
+  - `components/curator/` — curator-side client components
+- [lexicons/](lexicons/) — ATProto lexicon JSON
+  - `lexicons/com/smellgate/` — our 8 record types (the data model; see [docs/lexicons.md](docs/lexicons.md))
+  - `lexicons/com/atproto/repo/strongRef.json` — vendored upstream lexicon for cross-references
+  - `lexicons/xyz/statusphere/status.json` — legacy starter lexicon, still used by the webhook's statusphere branch
+- [lib/auth/](lib/auth/) — OAuth client wiring (hosted metadata via `PUBLIC_URL` + `PRIVATE_KEY`, loopback fallback for local dev)
+- [lib/curators.ts](lib/curators.ts) — `isCurator(did)` + DID list parsing (reads `SMELLGATE_CURATOR_DIDS` at module load)
+- [lib/db/](lib/db/) — SQLite + Kysely
+  - `migrations.ts` — schema migrations (additive; the smellgate cache tables were added in Phase 2.A)
+  - `index.ts` — `getDb()` + Kysely table types
+  - `queries.ts` — legacy statusphere queries + the Tap identity resolver (`getAccountHandle`)
+  - `smellgate-queries.ts` — 13+ typed queries for the read path. Includes `loadVoteTallies` helper for read-time vote dedupe.
+- [lib/tap/](lib/tap/) — Tap dispatch. `lib/tap/smellgate.ts` has `dispatchSmellgateEvent(db, evt)` which applies the curator gate + closed-enum gate + lexicon validation before upserting.
+- [lib/server/](lib/server/) — server-side pure functions called by the route handlers
+  - `smellgate-actions.ts` — `addToShelfAction`, `postReviewAction`, `postDescriptionAction`, `voteOnDescriptionAction`, `commentOnReviewAction`, `submitPerfumeAction`
+  - `smellgate-curator-actions.ts` — `listPendingSubmissionsAction`, `approveSubmissionAction`, `rejectSubmissionAction`, `markDuplicateAction`, and the login-hook `rewritePendingRecords`
+- [scripts/](scripts/) — dev + ops scripts
+  - `migrate.ts` — run Kysely migrations (invoked by `pnpm dev` and `pnpm start`)
+  - `gen-key.ts` — generate signing key for hosted OAuth (needed for production deploy)
+  - `seed-cache-from-fixtures.ts` — dev-only: populate the local cache with synthetic perfumes via the real dispatcher (used by `pnpm dev:seed-cache`)
+  - `seed-catalog.ts` — production-only one-shot to write the synthetic catalog to a curator PDS. **Has a known OAuth wrapper bug (#40) — do not run.**
+  - `rebuild-cache.ts` — drop + rebuild the smellgate cache tables from the network (`pnpm cache:rebuild`)
+- [tests/](tests/)
+  - `tests/helpers/pds.ts` — `startEphemeralPds`, `createTestAccounts`, `createTestOAuthClient` (in-process PDS via `@atproto/dev-env`)
+  - `tests/unit/` — unit tests (93+ total across lexicons, queries, curators, seed-catalog)
+  - `tests/integration/` — integration tests (43+ total: OAuth, Tap dispatch, webhook, cache rebuild, server actions, curator flow)
+  - `tests/fixtures/com/smellgate/` — lexicon validator fixtures
+  - `tests/fixtures/seed-catalog.json` — 75 synthetic perfumes
+- [docs/](docs/)
+  - `docs/lexicons.md` — **data model source of truth.** Read before modifying any record type.
+  - `docs/ui.md` — Phase 4 design conventions (Tailwind inline, amber accent, zinc neutrals). Read before adding any UI.
 
 ## Commands
 
 ```sh
 pnpm install
-pnpm dev          # runs migrate + next dev
-pnpm build:lex    # regenerate TS from lexicons/ — run after editing any lexicon
-pnpm build
-pnpm lint
+pnpm dev                 # runs migrate + next dev (loopback OAuth)
+pnpm dev:seed-cache      # populate local cache with 75 synthetic perfumes + 6 reviews via the real dispatcher
+pnpm build:lex           # regenerate TS from lexicons/ — run after editing any lexicon JSON
+pnpm typecheck           # runs build:lex + tsc --noEmit (self-sufficient, won't see stale generated-path errors)
+pnpm test                # Vitest unit tier (90+ tests)
+pnpm test:integration    # Vitest integration tier (in-process PDS; 43+ tests)
+pnpm build               # Next.js production build
+pnpm lint                # ESLint; note: has known local-vs-CI divergence (#38) — trust CI
+pnpm cache:rebuild       # read all records from a source PDS, drop the smellgate cache, re-index
+pnpm cache:rebuild:dry-run
+pnpm seed:catalog        # one-shot production seeder — DO NOT RUN, has bug (#40)
+pnpm seed:catalog:dry-run
+pnpm gen-key             # generate OAuth signing key for hosted deploy (Phase 5)
+pnpm migrate             # Kysely migrations only
 ```
-
-`pnpm test` does not exist yet — adding it is part of Phase 0.
 
 ## Roadmap
 
-Each phase is a set of issues. Phases are roughly sequential but issues within a phase are parallelizable unless noted. File each as a GitHub issue before starting; link the PR to the issue.
+Each phase is (or was) a set of issues. Phases are roughly sequential but issues within a phase are parallelizable unless noted. Every unit of work starts as a GitHub issue and lands as a PR.
 
-### Phase 0 — Foundations (unblocks everything else)
+### ✅ Phase 0 — Foundations (DONE)
 
-Goal: make the repo ours and make CI meaningful. Do this before any feature work.
+Rebrand (#4), Vitest harness (#6), local in-process PDS via `@atproto/dev-env` (#7/#17/#19), CI workflow (#8), CONTRIBUTING + PR template (#9), NSID docs (#5), rebrand cleanup sweep (#29). Vitest runs two tiers: `pnpm test` (unit) and `pnpm test:integration` (hits the in-process PDS via `tests/helpers/pds.ts`). CI is `.github/workflows/ci.yml`, required on `main`.
 
-1. **Rename + rebrand.** Update `package.json` name, README, remove statusphere-specific copy. Keep the commit small.
-2. **NSID namespace: `com.smellgate.*`.** Domain is `smellgate.com`. All lexicons live under this namespace (e.g. `com.smellgate.perfume`, `com.smellgate.shelfItem`). Document in `docs/lexicons.md`.
-3. **Test harness.** Add Vitest (lighter than Jest, Workers-friendly). Wire `pnpm test` and `pnpm test:integration`. One trivial passing test per tier so CI has something to run.
-4. **CI workflow.** `.github/workflows/ci.yml`: install, `pnpm lint`, `tsc --noEmit`, `pnpm build:lex`, `pnpm test`, `pnpm build`. Required check on `main`.
-5. **Local PDS for integration tests.** Script or compose file that brings up an ephemeral PDS and seeds a test account. Integration tests target it. This is the most important piece — do not skip it. Document how to run locally.
-6. **AGENTS.md + CONTRIBUTING.md linkage.** Make sure new agents find this file.
+### ✅ Phase 1 — Data model (DONE)
 
-### Phase 1 — Core lexicons (the data model IS the product)
+Pattern B (Bookhive-style operator-curated catalog; see [docs/lexicons.md](docs/lexicons.md) for the rationale and rejected alternatives). 8 record types under `com.smellgate.*`, fixtures + validator tests (#31 / PR #34). Curator enforcement library `lib/curators.ts` with env-var-driven DID list (#32 / PR #37). Synthetic seed catalog of 75 fake perfumes at `tests/fixtures/seed-catalog.json` (#33 / PR #39).
 
-Goal: define and validate the record types per [docs/lexicons.md](docs/lexicons.md). No UI yet. Every lexicon gets unit tests that round-trip valid + invalid fixtures.
+### ✅ Phase 2 — Read path (DONE)
 
-We adopt the **Bookhive-style operator-curated catalog pattern** (see [docs/lexicons.md](docs/lexicons.md) for rationale): a dedicated curator account publishes canonical `com.smellgate.perfume` records, and all user records reference them by strongRef. Users propose new perfumes via `com.smellgate.perfumeSubmission`, which curators resolve.
+Cache schema + Tap dispatcher (#42 / PR #45): 10 tables including `smellgate_perfume_note` join for tag lookups, single `dispatchSmellgateEvent` function gating on curator/closed-enum before upsert. Webhook wiring into `app/api/webhook/route.ts` (#46 / PR #48). Typed Kysely query layer with 13+ functions and read-time vote dedupe (#43 / PR #50). Cache rebuild script + test that drops and reconstructs the cache from PDS listings (#44 / PR #51).
 
-1. **`com.smellgate.perfume`** — curator-only canonical catalog entry.
-2. **`com.smellgate.perfumeSubmission`** — user-proposed perfume awaiting curator review.
-3. **`com.smellgate.perfumeSubmissionResolution`** — curator-only decision record linking a submission to a canonical perfume (or rejecting it).
-4. **`com.smellgate.shelfItem`** — a user's ownership entry.
-5. **`com.smellgate.review`** — rating (1–10) + sillage + longevity + body.
-6. **`com.smellgate.description`** — community-authored description (distinct from the curator's).
-7. **`com.smellgate.vote`** — up/down on a description; uniqueness enforced at read layer.
-8. **`com.smellgate.comment`** — flat reply on a review. No thread trees in v1.
-9. **Codegen + fixtures.** `pnpm build:lex` green, fixtures checked in under `lexicons/fixtures/`, validator tests passing.
-10. **Curator-only enforcement.** Read layer refuses to index `perfume` / `perfumeSubmissionResolution` records authored by non-curator DIDs. Curator DID list lives in config.
-11. **Synthetic seed catalog.** AI-generated fake perfumes in a versioned fixture file, loaded into the local PDS by the integration-test harness and into the production curator PDS by a one-time seed script.
+### ✅ Phase 3 — Write path (DONE)
 
-### Phase 2 — Read path (Tap ingest + cache)
+5 OAuth-gated server actions for shelf/review/description/vote/comment via route handlers under `app/api/smellgate/` backed by pure functions in `lib/server/smellgate-actions.ts` (#54 / PR #56). Submission flow + 4 curator endpoints + the **rewrite mechanic** that runs on login from `app/oauth/callback/route.ts` to repoint pending user records at newly-canonical perfumes (#55 / PR #59). OAuth `SCOPE` broadened from `repo:xyz.statusphere.status` to `transition:generic` (#57 / PR #65).
 
-1. **Subscribe to our collections** via Tap. Extend [lib/tap/](lib/tap/) to index our record types into the SQLite read cache.
-2. **Query layer.** Kysely queries for: perfume by AT-URI, perfumes by note tag, perfumes by creator, user shelf, user reviews, user descriptions, description vote tallies, review comments.
-3. **Cache invalidation / backfill story.** Document it. The cache can be rebuilt from the network — make sure that's actually true by writing a rebuild script and testing it.
+Phase 3.A (a server-side data layer between queries and UI) was considered and explicitly skipped — server components call the Phase 2.B queries directly.
 
-### Phase 3 — Write path + OAuth-gated actions
+### ✅ Phase 4 — UI (DONE)
 
-Server actions for: add-to-shelf, remove-from-shelf, post review, post description, vote, comment, submit new perfume. Each writes to the signed-in user's PDS via their OAuth session and then (optimistically) updates the local cache. Integration-tested against the local PDS from Phase 0.
+Design conventions documented in [docs/ui.md](docs/ui.md) — plain Tailwind inline, amber accent, zinc neutrals, no component primitive library, no web fonts, no icon libs. 6 sub-PRs:
 
-Also in Phase 3: **curator tooling.** A curator-only UI (gated by DID config) that lists pending `perfumeSubmission` records, lets a curator approve (publishing a canonical `perfume` + resolution), reject, or mark as duplicate. And the **submission rewrite flow** described in [docs/lexicons.md](docs/lexicons.md) — when a resolution is published, pending user records that reference the submission get rewritten to reference the canonical perfume. This is subtle; write it with integration tests from day one.
+- **4.A** layout shell + home page (#66 / PR #72)
+- **4.B** perfume detail + 3 tag pages (by note / house / creator) (#67 / PR #74) — note the Next.js 16 Turbopack quirk: dynamic segment params are NOT auto-decoded, must call `decodeURIComponent` explicitly
+- **4.C** profile pages with stacked shelf/reviews/descriptions sections (#68 / PR #77) — required a second round to add vote-tally rendering on description cards; the fix introduced a shared `loadVoteTallies` helper in `smellgate-queries.ts`
+- **4.D** 6 composer forms + real `VoteButtons` (#69 / PR #80) — uses plain `fetch()` to the Phase 3 POST endpoints, no server actions layer
+- **4.E** curator dashboard with inline approve/reject/duplicate actions (#70 / PR #81)
+- **4.F** substring search with LIKE-escape safety and unit tests for the escape behavior (#71 / PR #79)
 
-### Phase 4 — UI
+### 🟦 Phase 5 — Deployment (NOT STARTED)
 
-Minimalist, letterboxd-ish. Do not over-design; Tailwind is already wired.
-
-1. Perfume page: name, creator, notes-as-tags, creator description, reviews, community descriptions (sorted by votes).
-2. Tag page: "perfumes with note X" and "perfumes by creator Y" — same underlying query.
-3. Profile page: shelf, reviews authored, descriptions authored. Works for self and others.
-4. Shelf management UI.
-5. Review/description composer + comment UI.
-6. Search (can start as simple substring over cached perfumes).
-
-### Phase 5 — Deployment
-
-Only after Phase 4 is usable locally. Pick a host that comfortably runs a Next.js app + a persistent Tap process + a small SQLite or Postgres read cache (Fly.io, Railway, a small VM, etc. — evaluate at the time based on price and operational overhead). Add a preview-deploy workflow.
+Prerequisites tracked as P0 blockers in issue #86: bootstrap curator account (#1), fix seed-catalog OAuth wrapper (#40), wire hosted OAuth metadata (#85). Once those are clear, pick a host. **Not Cloudflare Workers** — the Tap consumer needs a long-running process. Fly.io, Railway, or a small VM are the candidates. Preview deploys via `.github/workflows/`.
 
 ### Phase 6+ — Later
 
-Notifications, follows, lists, import from other perfume sites, moderation tools. Do not scope these now.
+Notifications, follows, lists, import from other perfume sites, moderation tools beyond curator gating, multi-curator voting on submissions, real search (FTS / vector), shelf edit + delete, review edit. Do not scope these until Phase 5 is shipping and there's real user feedback to prioritize against.
+
+## Backlog organization
+
+Open issues are labeled with exactly one priority tier:
+
+- **`P0-blocker`** — hard blocker for shipping. Always crossed with `blocker:production`. Currently 3: #1, #40, #85.
+- **`P1-critical`** — fix during the pre-ship polish pass. Data integrity, test hardening, contributor UX. Currently 7.
+- **`P2-polish`** — nice to have before shipping, not blocking. Currently ~15.
+- **`P3-nice-to-have`** — maybe someday. Currently 3.
+
+Plus these cross-cut / organizational labels:
+
+- **`blocker:production`** — must be resolved before any real user can use the app. Currently P0s only.
+- **`meta`** — tracking / planning issue, not a unit of work. Currently just #86 (the pre-ship checklist).
+- **`phase-N`** (0-4) — historical attribution for what phase the issue was filed under.
+
+**Issue #86 is the master tracking board** for shipping. It lists every remaining item grouped by priority with a recommended ship order. Update it when you close anything significant.
 
 ## Conventions for agents
 
 - **Before starting:** `gh issue view <n>`, `gh pr list --search "is:open"`, `git pull`. Confirm nobody else is on it.
 - **Branch name:** `<issue-number>-<short-slug>`.
-- **PR:** link the issue (`Closes #N`), keep under ~400 lines of diff where possible, include a "How I tested" section naming the unit + integration tests that cover the change.
-- **Do not merge your own PR without** green CI and either a human review or (for trivial/infra PRs) an explicit note in the issue authorizing self-merge.
-- **After merge:** `gh pr checks` on the merge commit, verify `main` is green, close the issue if `Closes` didn't.
+- **PR:** link the issue (`Closes #N` — one keyword per issue, GitHub only auto-closes the first one without repeated `closes`), keep under ~400 lines of diff where possible, include a "How I tested" section naming the commands and tests that cover the change, and a "Scope check" section explicitly listing what you did and did not touch.
+- **Do not merge your own PR without** green CI AND an approved adversarial-review verdict.
+- **After merge:** `gh pr checks` on the merge commit, verify `main` is green, close the issue if `Closes` didn't, clean up the worktree with `git worktree remove --force` + `git branch -D`.
 - **If you get stuck** on an ATProto/lexicon design question, stop and file a design issue rather than guessing. Bad data model decisions are expensive to reverse once records are in the wild.
+
+### Worktree isolation
+
+Implementation agents run in isolated git worktrees (`.claude/worktrees/agent-<id>/`) branched from `main`. A few recurring failure modes to watch for:
+
+- **Files accidentally written to the main tree instead of the worktree.** Several agents have hit this when using absolute paths like `/workspaces/smellgate/app/foo.tsx` from inside a worktree'd session. If the orchestrator notices untracked files in main that belong to an in-progress agent, clean them (`rm -rf`) — the agent will have its own copy inside the worktree. Warn the agent about it in their next message if they're still active.
+- **Dev servers left running.** Agents that do browser tests sometimes leave `next dev` processes on port 3000/3001. Before spawning a new agent that needs the dev server, `pkill -f "next dev"` to clear them.
+- **`.next/dev/lock` contention.** If multiple agents try to run `pnpm dev` simultaneously they'll collide on this lock file. `rm -rf .next` to clear.
+
+### Adversarial review is part of the workflow, not optional
+
+- **Non-trivial PRs:** always spawn a fresh adversarial reviewer (new agent, no shared context with the author). Pass the PR URL, the linked issue number, and the paths to `AGENTS.md` and `docs/lexicons.md`.
+- **Trivial PRs (single-line config, doc typo):** may be merged without review, but the PR description must explicitly say so and justify.
+- **Review verdicts:** `approve` / `request-changes` / `block`. Merge only on `approve`. On `request-changes`, send the implementation agent back via `SendMessage` with specifics. On `block`, halt and escalate to the human.
+- **Admin-merge bypass:** use `gh pr merge --squash --admin` for approved PRs. Branch protection requires a check named `lint / typecheck / test / build` — if it's not green, do not bypass.
+
+### Running the dev server for manual smoke testing
+
+```sh
+rm -rf .next                              # clear any stale build state / locks
+pkill -f "next dev"                       # kill any stray dev servers on 3000/3001
+pnpm dev:seed-cache                       # populate the cache with synthetic data
+nohup pnpm dev > /tmp/smellgate-dev.log 2>&1 &   # detach from parent so it survives
+disown
+```
+
+`.env.local` needs at least `SMELLGATE_CURATOR_DIDS=did:plc:smellgate-dev-curator` so the seed curator can write perfume records. A full starter `.env.local` is the same as `env.template`.
+
+In a GitHub Codespace, Next.js picks port 3000 if free, otherwise 3001. The forwarded URL follows the pattern `https://<codespace-name>-<port>.app.github.dev` — approve the port forwarding prompt on first access.
+
+The loopback OAuth flow only works at 127.0.0.1, so **actual login will fail** from a Codespaces forwarded URL. Browse anonymously; most of the app is readable without auth. For real OAuth testing you need the hosted-metadata path from #85.
+
+### Picking up a stalled task
+
+Implementation and review agents sometimes take 5–17 minutes on substantive work and look "stalled" (output file at 131 bytes for minutes). The pattern has been: wait 5–10 minutes before declaring an agent dead. If you do spawn a replacement, the original often finishes anyway — that's fine for reviewers (two reviews is harmless) but wasteful for implementation agents (two PRs means one gets closed).
+
+If an agent reports something that contradicts what's actually on `main` (e.g. "AGENTS.md section X doesn't exist" when it clearly does), suspect stale context — the agent may be reading from a worktree checked out at an older commit. Verify the truth yourself before acting on the report.
