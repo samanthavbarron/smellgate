@@ -9,6 +9,13 @@
  * `globalSetup`) decide when to start/stop. There is no module-level
  * singleton.
  *
+ * Public surface (#20): integration tests see only a small, intentional
+ * API — `url`, the helper functions in this module, and nothing else.
+ * The `TestNetworkNoAppView` handle is kept in a module-private
+ * WeakMap keyed on the returned `EphemeralPds`, so tests cannot reach
+ * into the full `@atproto/dev-env` surface area (which would couple
+ * them to dev-env internals and defeat the point of the helper).
+ *
  * Test code should depend on the deterministic handle/password convention
  * here so the same accounts are available across runs.
  */
@@ -44,11 +51,37 @@ export type TestAccountCreds = {
   refreshJwt: string
 }
 
+/**
+ * Public handle returned to tests. Intentionally narrow: only the PDS
+ * base URL is exposed. Everything else — the underlying
+ * `TestNetworkNoAppView`, the PLC directory URL, the seed client —
+ * is kept module-private (see `networkFor` below) so tests can only
+ * use the thin helpers exported from this file.
+ */
 export type EphemeralPds = {
   /** Base URL of the in-process PDS, e.g. `http://localhost:2583`. */
-  url: string
-  /** Underlying network handle (PDS + PLC). */
-  network: TestNetworkNoAppView
+  readonly url: string
+}
+
+/**
+ * Module-private map from the returned `EphemeralPds` handle to its
+ * underlying `TestNetworkNoAppView`. WeakMap so a dropped handle is
+ * garbage-collectable without an explicit `delete`.
+ *
+ * This replaces the former `pds.network` public field. Code inside
+ * this module uses `networkFor(pds)` to reach the full dev-env
+ * surface; code outside this module cannot.
+ */
+const NETWORK_BY_PDS = new WeakMap<EphemeralPds, TestNetworkNoAppView>()
+
+function networkFor(pds: EphemeralPds): TestNetworkNoAppView {
+  const network = NETWORK_BY_PDS.get(pds)
+  if (!network) {
+    throw new Error(
+      'EphemeralPds has no associated network — was it created by startEphemeralPds()?',
+    )
+  }
+  return network
 }
 
 /**
@@ -67,12 +100,17 @@ export async function startEphemeralPds(
     timeoutMs,
     `PDS failed to start within ${timeoutMs}ms`,
   )
-  return { url: network.pds.url, network }
+  const handle: EphemeralPds = { url: network.pds.url }
+  NETWORK_BY_PDS.set(handle, network)
+  return handle
 }
 
 /** Stop and dispose the PDS + PLC. Safe to call once. */
 export async function stopEphemeralPds(pds: EphemeralPds): Promise<void> {
-  await pds.network.close()
+  const network = NETWORK_BY_PDS.get(pds)
+  if (!network) return
+  NETWORK_BY_PDS.delete(pds)
+  await network.close()
 }
 
 /**
@@ -83,7 +121,7 @@ export async function createTestAccounts(
   pds: EphemeralPds,
   specs: readonly TestAccountSpec[] = DEFAULT_TEST_ACCOUNTS,
 ): Promise<TestAccountCreds[]> {
-  const seedClient = pds.network.getSeedClient()
+  const seedClient = networkFor(pds).getSeedClient()
   const out: TestAccountCreds[] = []
   for (const spec of specs) {
     const acct = await seedClient.createAccount(spec.shortName, {
@@ -149,7 +187,7 @@ export function createTestOAuthClient(
     // Resolve DIDs against the in-process PLC directory, not the public
     // `plc.directory`. Without this the OAuth client would try to hit
     // the network during authorization and fail.
-    plcDirectoryUrl: pds.network.plc.url,
+    plcDirectoryUrl: networkFor(pds).plc.url,
     stateStore: {
       async get(key) {
         return stateStore.get(key)
