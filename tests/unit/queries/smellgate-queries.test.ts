@@ -509,7 +509,7 @@ describe("smellgate-queries", () => {
   });
 
   describe("getUserDescriptions", () => {
-    it("returns descriptions authored by the user, newest first", async () => {
+    it("returns descriptions authored by the user, newest first, with zero-vote tallies", async () => {
       const p = await seedPerfume(env.db, { name: "P", house: "H" });
       const d1 = await seedDescription(env.db, USER_A, p, "one");
       const d2 = await seedDescription(env.db, USER_A, p, "two");
@@ -517,6 +517,15 @@ describe("smellgate-queries", () => {
 
       const got = await env.q.getUserDescriptions(env.db.getDb(), USER_A);
       expect(got.map((d) => d.uri)).toEqual([d2, d1]);
+      // With no votes cast, every row should still carry a tally shape.
+      expect(got[0].up_count).toBe(0);
+      expect(got[0].down_count).toBe(0);
+      expect(got[0].score).toBe(0);
+    });
+
+    it("returns [] when the user has no descriptions", async () => {
+      const got = await env.q.getUserDescriptions(env.db.getDb(), USER_A);
+      expect(got).toEqual([]);
     });
 
     it("pagination limit works", async () => {
@@ -528,6 +537,48 @@ describe("smellgate-queries", () => {
         limit: 2,
       });
       expect(got).toHaveLength(2);
+    });
+
+    it("attaches up/down/score from votes on the user's descriptions", async () => {
+      const p = await seedPerfume(env.db, { name: "P", house: "H" });
+      const d1 = await seedDescription(env.db, USER_A, p, "one");
+      const d2 = await seedDescription(env.db, USER_A, p, "two");
+      // d1: +2 / -0
+      await seedVote(env.db, USER_B, d1, "up");
+      await seedVote(env.db, USER_C, d1, "up");
+      // d2: +1 / -1
+      await seedVote(env.db, USER_B, d2, "up");
+      await seedVote(env.db, USER_C, d2, "down");
+
+      const got = await env.q.getUserDescriptions(env.db.getDb(), USER_A);
+      // Ordering is by indexed_at DESC, so d2 is first.
+      const byUri = new Map(got.map((d) => [d.uri, d]));
+      expect(byUri.get(d1)).toMatchObject({
+        up_count: 2,
+        down_count: 0,
+        score: 2,
+      });
+      expect(byUri.get(d2)).toMatchObject({
+        up_count: 1,
+        down_count: 1,
+        score: 0,
+      });
+    });
+
+    it("dedupes votes: only each author's most recent vote counts", async () => {
+      const p = await seedPerfume(env.db, { name: "P", house: "H" });
+      const d = await seedDescription(env.db, USER_A, p);
+      // USER_B votes up, then later votes down. Only the down should count.
+      await seedVote(env.db, USER_B, d, "up");
+      await seedVote(env.db, USER_B, d, "down");
+      // USER_C only votes up.
+      await seedVote(env.db, USER_C, d, "up");
+
+      const got = await env.q.getUserDescriptions(env.db.getDb(), USER_A);
+      expect(got).toHaveLength(1);
+      expect(got[0].up_count).toBe(1);
+      expect(got[0].down_count).toBe(1);
+      expect(got[0].score).toBe(0);
     });
   });
 

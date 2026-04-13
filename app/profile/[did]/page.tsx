@@ -41,11 +41,9 @@ import {
   getUserReviews,
   getUserDescriptions,
   type ShelfItemWithPerfume,
+  type DescriptionWithVotes,
 } from "@/lib/db/smellgate-queries";
-import type {
-  SmellgateReviewTable,
-  SmellgateDescriptionTable,
-} from "@/lib/db";
+import type { SmellgateReviewTable } from "@/lib/db";
 import { getAccountHandle } from "@/lib/db/queries";
 import { PerfumeTile } from "@/components/PerfumeTile";
 
@@ -268,15 +266,33 @@ function ProfileDescriptionCard({
   description,
   perfume,
 }: {
-  description: SmellgateDescriptionTable;
+  description: DescriptionWithVotes;
   perfume: { uri: string; name: string; house: string } | null;
 }) {
   const href = perfume
     ? `/perfume/${encodeURIComponent(perfume.uri)}`
     : null;
   return (
-    <article className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
-      <header>
+    <article className="flex gap-4 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
+      {/* Score gutter — visual match for the perfume detail page's
+          DescriptionCard. Vote *buttons* are omitted here: profile
+          descriptions are a feed of the user's own writing, not a
+          voting surface, and the vote write path is Phase 3/4.D
+          territory regardless. */}
+      <div className="flex shrink-0 flex-col items-center gap-0.5 text-xs text-zinc-500 dark:text-zinc-500">
+        <span aria-hidden>▲</span>
+        <span
+          className={
+            description.score > 0
+              ? "font-semibold text-amber-700 dark:text-amber-400"
+              : "font-semibold text-zinc-700 dark:text-zinc-300"
+          }
+        >
+          {description.score}
+        </span>
+        <span aria-hidden>▼</span>
+      </div>
+      <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">
           Description of{" "}
           {href ? (
@@ -297,10 +313,13 @@ function ProfileDescriptionCard({
             {perfume.house}
           </div>
         )}
-      </header>
-      <p className="mt-3 whitespace-pre-wrap text-sm text-zinc-700 dark:text-zinc-300">
-        {description.body}
-      </p>
+        <div className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-500">
+          +{description.up_count} / −{description.down_count}
+        </div>
+        <p className="mt-3 whitespace-pre-wrap text-sm text-zinc-700 dark:text-zinc-300">
+          {description.body}
+        </p>
+      </div>
     </article>
   );
 }
