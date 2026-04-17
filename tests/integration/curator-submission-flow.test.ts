@@ -1026,6 +1026,155 @@ describe("smellgate submission + curator flow (Phase 3.C)", () => {
   //      assertion would be vacuous.
   // ---------------------------------------------------------------------------
 
+  // ---------------------------------------------------------------------------
+  // writeGuards: "already resolved" guard on approve / reject / duplicate
+  // (issue #138). A double-approve must not mint a second canonical
+  // perfume; a reject-then-approve must not stack a conflicting
+  // resolution; same for the duplicate path.
+  // ---------------------------------------------------------------------------
+
+  it("approveSubmissionAction rejects a double-approve with 400 (#138)", async () => {
+    const sub = await env.actions.submitPerfumeAction(env.db.getDb(), aliceSession, {
+      name: "Double Approve",
+      house: "House",
+      notes: ["sandalwood"],
+    });
+    const subFetched = await getRecord(aliceSession, sub.uri);
+    await indexRecordIntoCache(env, sub.uri, subFetched.cid, {
+      $type: "com.smellgate.perfumeSubmission",
+      ...subFetched.value,
+    });
+
+    // First approve: succeeds.
+    const first = await env.curator.approveSubmissionAction(
+      env.db.getDb(),
+      bobSession,
+      { submissionUri: sub.uri },
+    );
+    // Feed the resolution into the cache so the second-call guard
+    // can see it — this mirrors the production firehose landing the
+    // first resolution before the second click arrives.
+    const listRes = await bobSession.fetchHandler(
+      `/xrpc/com.atproto.repo.listRecords?repo=${encodeURIComponent(bob.did)}&collection=com.smellgate.perfumeSubmissionResolution&limit=100`,
+      { method: "GET" },
+    );
+    const listBody = (await listRes.json()) as {
+      records: { uri: string; cid: string; value: Record<string, unknown> }[];
+    };
+    const resolutionRow = listBody.records.find(
+      (r) => (r.value as { submission: { uri: string } }).submission.uri === sub.uri,
+    );
+    expect(resolutionRow).toBeDefined();
+    await indexRecordIntoCache(
+      env,
+      resolutionRow!.uri,
+      resolutionRow!.cid,
+      resolutionRow!.value,
+    );
+
+    // Second approve: must fail with 400 "already resolved".
+    await expect(
+      env.curator.approveSubmissionAction(env.db.getDb(), bobSession, {
+        submissionUri: sub.uri,
+      }),
+    ).rejects.toMatchObject({ name: "ActionError", status: 400 });
+
+    // Sanity: only one canonical perfume named "Double Approve" on
+    // bob's PDS (the first approve's).
+    const perfumeListRes = await bobSession.fetchHandler(
+      `/xrpc/com.atproto.repo.listRecords?repo=${encodeURIComponent(bob.did)}&collection=com.smellgate.perfume&limit=100`,
+      { method: "GET" },
+    );
+    const perfumeListBody = (await perfumeListRes.json()) as {
+      records: { uri: string; value: { name?: string } }[];
+    };
+    const matching = perfumeListBody.records.filter(
+      (r) => r.value.name === "Double Approve",
+    );
+    expect(matching).toHaveLength(1);
+    expect(matching[0].uri).toBe(first.perfumeUri);
+  }, 120_000);
+
+  it("rejectSubmissionAction rejects after a prior resolution (#138)", async () => {
+    const sub = await env.actions.submitPerfumeAction(env.db.getDb(), aliceSession, {
+      name: "Already Approved",
+      house: "House",
+      notes: ["leather"],
+    });
+    const subFetched = await getRecord(aliceSession, sub.uri);
+    await indexRecordIntoCache(env, sub.uri, subFetched.cid, {
+      $type: "com.smellgate.perfumeSubmission",
+      ...subFetched.value,
+    });
+
+    // First: approve.
+    await env.curator.approveSubmissionAction(env.db.getDb(), bobSession, {
+      submissionUri: sub.uri,
+    });
+    // Feed the resolution through the dispatcher.
+    const listRes = await bobSession.fetchHandler(
+      `/xrpc/com.atproto.repo.listRecords?repo=${encodeURIComponent(bob.did)}&collection=com.smellgate.perfumeSubmissionResolution&limit=100`,
+      { method: "GET" },
+    );
+    const listBody = (await listRes.json()) as {
+      records: { uri: string; cid: string; value: Record<string, unknown> }[];
+    };
+    const row = listBody.records.find(
+      (r) => (r.value as { submission: { uri: string } }).submission.uri === sub.uri,
+    );
+    expect(row).toBeDefined();
+    await indexRecordIntoCache(env, row!.uri, row!.cid, row!.value);
+
+    // Then: reject — must fail with 400 "already resolved".
+    await expect(
+      env.curator.rejectSubmissionAction(env.db.getDb(), bobSession, {
+        submissionUri: sub.uri,
+        note: "changed my mind",
+      }),
+    ).rejects.toMatchObject({ name: "ActionError", status: 400 });
+  }, 120_000);
+
+  it("markDuplicateAction rejects after a prior resolution (#138)", async () => {
+    const canonicalUri = await seedCanonicalPerfume(env, bob.did, "Pre-existing");
+
+    const sub = await env.actions.submitPerfumeAction(env.db.getDb(), aliceSession, {
+      name: "Already Resolved",
+      house: "House",
+      notes: ["amber"],
+    });
+    const subFetched = await getRecord(aliceSession, sub.uri);
+    await indexRecordIntoCache(env, sub.uri, subFetched.cid, {
+      $type: "com.smellgate.perfumeSubmission",
+      ...subFetched.value,
+    });
+
+    // First: reject the submission.
+    await env.curator.rejectSubmissionAction(env.db.getDb(), bobSession, {
+      submissionUri: sub.uri,
+      note: "spam",
+    });
+    const listRes = await bobSession.fetchHandler(
+      `/xrpc/com.atproto.repo.listRecords?repo=${encodeURIComponent(bob.did)}&collection=com.smellgate.perfumeSubmissionResolution&limit=100`,
+      { method: "GET" },
+    );
+    const listBody = (await listRes.json()) as {
+      records: { uri: string; cid: string; value: Record<string, unknown> }[];
+    };
+    const row = listBody.records.find(
+      (r) => (r.value as { submission: { uri: string } }).submission.uri === sub.uri,
+    );
+    expect(row).toBeDefined();
+    await indexRecordIntoCache(env, row!.uri, row!.cid, row!.value);
+
+    // Then: mark as duplicate — must fail 400.
+    await expect(
+      env.curator.markDuplicateAction(env.db.getDb(), bobSession, {
+        submissionUri: sub.uri,
+        canonicalPerfumeUri: canonicalUri,
+      }),
+    ).rejects.toMatchObject({ name: "ActionError", status: 400 });
+  }, 120_000);
+
   it("rewritePendingRecords is scoped to the calling user (cross-tenant guard)", async () => {
     // Alice submits.
     const sub = await env.actions.submitPerfumeAction(env.db.getDb(), aliceSession, {
