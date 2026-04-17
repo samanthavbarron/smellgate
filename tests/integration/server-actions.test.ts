@@ -484,6 +484,12 @@ describe("smellgate server actions (Phase 3.B)", () => {
       expect(result.uri).toMatch(
         new RegExp(`^at://${alice.did}/com\\.smellgate\\.shelfItem/`),
       );
+      // Issue #119: response echoes the persisted record, including
+      // the optional bottleSizeMl + isDecant flags.
+      expect(result.record.perfumeUri).toBe(perfumeUri);
+      expect(result.record.bottleSizeMl).toBe(100);
+      expect(result.record.isDecant).toBe(false);
+      expect(typeof result.record.createdAt).toBe("string");
       const fetched = await getRecord(aliceSession, result.uri);
       const value = fetched.value as {
         $type: string;
@@ -494,6 +500,64 @@ describe("smellgate server actions (Phase 3.B)", () => {
       expect(value.perfume.uri).toBe(perfumeUri);
       expect(value.perfume.cid).toBe(FAKE_CID);
       expect(value.bottleSizeMl).toBe(100);
+    }, 60_000);
+
+    // Issue #119: server-side bounds on bottleSizeMl. Negative values
+    // were already caught by the `<= 0` guard; the new upper bound
+    // is 1000ml (MAX_BOTTLE_SIZE_ML in the action module).
+    it("rejects an absurdly large bottleSizeMl with 400 and writes nothing", async () => {
+      const perfumeUri = await seedPerfume(env, "Huge Bottle");
+      const beforeCount = await listRecordCount(
+        aliceSession,
+        alice.did,
+        "com.smellgate.shelfItem",
+      );
+      await expect(
+        env.actions.addToShelfAction(env.db.getDb(), aliceSession, {
+          perfumeUri,
+          bottleSizeMl: 999999,
+        }),
+      ).rejects.toMatchObject({ name: "ActionError", status: 400 });
+      const afterCount = await listRecordCount(
+        aliceSession,
+        alice.did,
+        "com.smellgate.shelfItem",
+      );
+      expect(afterCount).toBe(beforeCount);
+    }, 30_000);
+
+    it("rejects a negative bottleSizeMl with 400 and writes nothing", async () => {
+      const perfumeUri = await seedPerfume(env, "Negative Bottle");
+      const beforeCount = await listRecordCount(
+        aliceSession,
+        alice.did,
+        "com.smellgate.shelfItem",
+      );
+      await expect(
+        env.actions.addToShelfAction(env.db.getDb(), aliceSession, {
+          perfumeUri,
+          bottleSizeMl: -5,
+        }),
+      ).rejects.toMatchObject({ name: "ActionError", status: 400 });
+      const afterCount = await listRecordCount(
+        aliceSession,
+        alice.did,
+        "com.smellgate.shelfItem",
+      );
+      expect(afterCount).toBe(beforeCount);
+    }, 30_000);
+
+    it("omits optional echo fields when they were not provided", async () => {
+      const perfumeUri = await seedPerfume(env, "Minimal Shelf");
+      const result = await env.actions.addToShelfAction(
+        env.db.getDb(),
+        aliceSession,
+        { perfumeUri },
+      );
+      expect(result.record.perfumeUri).toBe(perfumeUri);
+      expect(result.record.bottleSizeMl).toBeUndefined();
+      expect(result.record.isDecant).toBeUndefined();
+      expect(result.record.acquiredAt).toBeUndefined();
     }, 60_000);
 
     it("rejects unknown perfumeUri with 404 and writes nothing", async () => {
@@ -538,6 +602,13 @@ describe("smellgate server actions (Phase 3.B)", () => {
       expect(result.uri).toMatch(
         new RegExp(`^at://${alice.did}/com\\.smellgate\\.review/`),
       );
+      // Issue #124: response echoes the persisted record.
+      expect(result.record.perfumeUri).toBe(perfumeUri);
+      expect(result.record.rating).toBe(9);
+      expect(result.record.sillage).toBe(4);
+      expect(result.record.longevity).toBe(5);
+      expect(result.record.body).toContain("Surprisingly");
+      expect(typeof result.record.createdAt).toBe("string");
       const fetched = await getRecord(aliceSession, result.uri);
       const value = fetched.value as {
         $type: string;
@@ -592,6 +663,10 @@ describe("smellgate server actions (Phase 3.B)", () => {
       expect(result.uri).toMatch(
         new RegExp(`^at://${alice.did}/com\\.smellgate\\.description/`),
       );
+      // Issue #124: response echoes the persisted record.
+      expect(result.record.perfumeUri).toBe(perfumeUri);
+      expect(result.record.body).toContain("aromatic");
+      expect(typeof result.record.createdAt).toBe("string");
       const fetched = await getRecord(aliceSession, result.uri);
       const value = fetched.value as { $type: string; body: string };
       expect(value.$type).toBe("com.smellgate.description");
@@ -639,6 +714,10 @@ describe("smellgate server actions (Phase 3.B)", () => {
       expect(result.uri).toMatch(
         new RegExp(`^at://${alice.did}/com\\.smellgate\\.vote/`),
       );
+      // Issue #124: response echoes the persisted record.
+      expect(result.record.descriptionUri).toBe(descriptionUri);
+      expect(result.record.direction).toBe("up");
+      expect(typeof result.record.createdAt).toBe("string");
       const fetched = await getRecord(aliceSession, result.uri);
       const value = fetched.value as {
         $type: string;
@@ -698,6 +777,10 @@ describe("smellgate server actions (Phase 3.B)", () => {
       expect(result.uri).toMatch(
         new RegExp(`^at://${alice.did}/com\\.smellgate\\.comment/`),
       );
+      // Issue #124: response echoes the persisted record.
+      expect(result.record.reviewUri).toBe(reviewUri);
+      expect(result.record.body).toBe("Agree completely.");
+      expect(typeof result.record.createdAt).toBe("string");
       const fetched = await getRecord(aliceSession, result.uri);
       const value = fetched.value as {
         $type: string;
@@ -962,5 +1045,239 @@ describe("smellgate server actions (Phase 3.B)", () => {
       expect(matching).toHaveLength(1);
       expect(matching[0].value.direction).toBe("down");
     }, 90_000);
+  });
+
+  // -- response-shape sweep: submit envelope (#111) + idempotence (#126) ----
+
+  describe("submitPerfumeAction response envelope", () => {
+    it("returns the pending_review envelope with status + message + record", async () => {
+      const result = await env.actions.submitPerfumeAction(
+        env.db.getDb(),
+        aliceSession,
+        {
+          name: "Envelope Test",
+          house: "Envelope House",
+          notes: ["rose", "oud"],
+          creator: "Some Perfumer",
+          releaseYear: 2024,
+          description: "A test description.",
+        },
+      );
+      expect(result.status).toBe("pending_review");
+      expect(result.message).toMatch(/curator/i);
+      expect(result.record.name).toBe("Envelope Test");
+      expect(result.record.house).toBe("Envelope House");
+      expect(result.record.creator).toBe("Some Perfumer");
+      expect(result.record.releaseYear).toBe(2024);
+      expect(result.record.notes).toEqual(["rose", "oud"]);
+      expect(result.record.description).toBe("A test description.");
+      expect(typeof result.record.createdAt).toBe("string");
+      // The `normalized` alias is still present for #128 callers.
+      expect(result.normalized.notes).toEqual(["rose", "oud"]);
+    }, 60_000);
+
+    it("returns the existing URI idempotently on a same-(name, house) resubmit", async () => {
+      const first = await env.actions.submitPerfumeAction(
+        env.db.getDb(),
+        aliceSession,
+        {
+          name: "Idempotent Test",
+          house: "Same House",
+          notes: ["vanilla"],
+        },
+      );
+      // Second submit with the same name+house (but different other
+      // fields!) should return the first submission's URI, with
+      // `idempotent: true`.
+      const second = await env.actions.submitPerfumeAction(
+        env.db.getDb(),
+        aliceSession,
+        {
+          name: "Idempotent Test",
+          house: "Same House",
+          notes: ["vanilla", "tonka"], // different notes — still dup
+          rationale: "Second attempt with extra rationale",
+        },
+      );
+      expect(second.uri).toBe(first.uri);
+      expect(second.idempotent).toBe(true);
+      expect(second.status).toBe("pending_review");
+
+      // Only one submission on alice's PDS for this name.
+      const listRes = await aliceSession.fetchHandler(
+        `/xrpc/com.atproto.repo.listRecords?repo=${encodeURIComponent(
+          alice.did,
+        )}&collection=com.smellgate.perfumeSubmission&limit=100`,
+        { method: "GET" },
+      );
+      const listBody = (await listRes.json()) as {
+        records: { uri: string; value: { name?: string; house?: string } }[];
+      };
+      const matching = listBody.records.filter(
+        (r) =>
+          r.value?.name === "Idempotent Test" &&
+          r.value?.house === "Same House",
+      );
+      expect(matching).toHaveLength(1);
+    }, 90_000);
+
+    it("matches case-insensitively when checking for duplicate submissions", async () => {
+      const first = await env.actions.submitPerfumeAction(
+        env.db.getDb(),
+        aliceSession,
+        {
+          name: "Case Test",
+          house: "Case House",
+          notes: ["bergamot"],
+        },
+      );
+      const second = await env.actions.submitPerfumeAction(
+        env.db.getDb(),
+        aliceSession,
+        {
+          name: "  case test  ", // whitespace + lowercase
+          house: "CASE HOUSE",
+          notes: ["bergamot"],
+        },
+      );
+      expect(second.uri).toBe(first.uri);
+      expect(second.idempotent).toBe(true);
+    }, 90_000);
+
+    // Reviewer follow-up on #126: once a prior submission is resolved
+    // (rejected here), a re-submit is a fresh proposal — the server
+    // MUST NOT echo "queued for curator review" for something that
+    // has already been acted on. Tests that the idempotence guard
+    // short-circuits only on a genuinely pending prior.
+    it("creates a new submission when the prior one was resolved", async () => {
+      const first = await env.actions.submitPerfumeAction(
+        env.db.getDb(),
+        aliceSession,
+        {
+          name: "Resolved Resubmit",
+          house: "Resubmit House",
+          notes: ["oakmoss"],
+        },
+      );
+
+      // Dispatch a synthetic rejection resolution for `first`.
+      const rejectEvt = makeEvent(
+        "com.smellgate.perfumeSubmissionResolution",
+        FAKE_CURATOR_DID,
+        {
+          $type: "com.smellgate.perfumeSubmissionResolution",
+          submission: { uri: first.uri, cid: FAKE_CID },
+          decision: "rejected",
+          note: "Needs more detail.",
+          createdAt: nowIso(),
+        },
+      );
+      await env.tap.dispatchSmellgateEvent(env.db.getDb(), rejectEvt);
+
+      // Now resubmit the same (name, house). The idempotence guard
+      // should see the resolution and fall through to a fresh write.
+      const second = await env.actions.submitPerfumeAction(
+        env.db.getDb(),
+        aliceSession,
+        {
+          name: "Resolved Resubmit",
+          house: "Resubmit House",
+          notes: ["oakmoss", "patchouli"],
+          rationale: "Adding a missing note per curator feedback.",
+        },
+      );
+      expect(second.idempotent).toBeUndefined();
+      expect(second.uri).not.toBe(first.uri);
+    }, 120_000);
+  });
+
+  // -- response-shape sweep: listMySubmissionsAction (#131) ----------------
+
+  describe("listMySubmissionsAction", () => {
+    it("returns the user's submissions annotated with resolution state", async () => {
+      // Seed three submissions by alice directly via the real action,
+      // then dispatch a synthetic resolution event for the first one
+      // (approved) and another for the second (rejected). Third stays
+      // pending.
+      const subA = await env.actions.submitPerfumeAction(
+        env.db.getDb(),
+        aliceSession,
+        {
+          name: "Alpha Submission",
+          house: "Alpha House",
+          notes: ["a"],
+        },
+      );
+      const subB = await env.actions.submitPerfumeAction(
+        env.db.getDb(),
+        aliceSession,
+        {
+          name: "Bravo Submission",
+          house: "Bravo House",
+          notes: ["b"],
+        },
+      );
+      const subC = await env.actions.submitPerfumeAction(
+        env.db.getDb(),
+        aliceSession,
+        {
+          name: "Charlie Submission",
+          house: "Charlie House",
+          notes: ["c"],
+        },
+      );
+
+      // Seed a canonical perfume that subA's resolution will reference.
+      const canonicalPerfumeUri = await seedPerfume(
+        env,
+        "Alpha Canonical",
+      );
+
+      // Dispatch an approval resolution for subA.
+      const approveEvt = makeEvent(
+        "com.smellgate.perfumeSubmissionResolution",
+        FAKE_CURATOR_DID,
+        {
+          $type: "com.smellgate.perfumeSubmissionResolution",
+          submission: { uri: subA.uri, cid: FAKE_CID },
+          decision: "approved",
+          perfume: { uri: canonicalPerfumeUri, cid: FAKE_CID },
+          createdAt: nowIso(),
+        },
+      );
+      await env.tap.dispatchSmellgateEvent(env.db.getDb(), approveEvt);
+
+      // Dispatch a rejection resolution for subB with a curator note.
+      const rejectEvt = makeEvent(
+        "com.smellgate.perfumeSubmissionResolution",
+        FAKE_CURATOR_DID,
+        {
+          $type: "com.smellgate.perfumeSubmissionResolution",
+          submission: { uri: subB.uri, cid: FAKE_CID },
+          decision: "rejected",
+          note: "Not enough detail.",
+          createdAt: nowIso(),
+        },
+      );
+      await env.tap.dispatchSmellgateEvent(env.db.getDb(), rejectEvt);
+
+      // Now list alice's submissions.
+      const items = await env.actions.listMySubmissionsAction(
+        env.db.getDb(),
+        aliceSession,
+      );
+      // Three submissions for this test, keyed by uri. Match by URI.
+      const a = items.find((i) => i.uri === subA.uri);
+      const b = items.find((i) => i.uri === subB.uri);
+      const c = items.find((i) => i.uri === subC.uri);
+      expect(a).toBeDefined();
+      expect(b).toBeDefined();
+      expect(c).toBeDefined();
+      expect(a?.state).toBe("approved");
+      expect(a?.resolvedPerfumeUri).toBe(canonicalPerfumeUri);
+      expect(b?.state).toBe("rejected");
+      expect(b?.resolutionNote).toBe("Not enough detail.");
+      expect(c?.state).toBe("pending");
+    }, 120_000);
   });
 });

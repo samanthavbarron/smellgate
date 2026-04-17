@@ -19,6 +19,7 @@
  *   pnpm agent:as alice comment at://.../com.smellgate.review/... \
  *     --body "agreed!"
  *   pnpm agent:as alice submit '{"name":"X","house":"Y","notes":["a","b"]}'
+ *   pnpm agent:as alice submissions list
  *   pnpm agent:as curator curator pending
  *   pnpm agent:as curator curator approve at://...
  *   pnpm agent:as curator curator reject at://... --note "spam"
@@ -667,6 +668,15 @@ async function runAction(
       console.log(JSON.stringify(expectJson(res, "comment")));
       return;
     }
+    case "submissions": {
+      const sub = positional[1];
+      if (sub !== "list") {
+        throw new Error(`unknown submissions subcommand: ${sub}`);
+      }
+      const res = await authedFetch(session, "/api/smellgate/me/submissions");
+      console.log(JSON.stringify(expectJson(res, "submissions list")));
+      return;
+    }
     case "submit": {
       const json = positional[1];
       if (!json) throw new Error("submit '<json perfume data>' required");
@@ -749,7 +759,8 @@ function usage(): never {
   console.error(
     "usage: pnpm agent:as <handle> <action> [args...]\n" +
       "actions: whoami | home | perfume <uri> | shelf add|list | review write |\n" +
-      "         description write | vote | comment | submit | curator pending|approve|reject|duplicate",
+      "         description write | vote | comment | submit | submissions list |\n" +
+      "         curator pending|approve|reject|duplicate",
   );
   process.exit(2);
 }

@@ -45,6 +45,7 @@ import {
 } from "@/lib/db/smellgate-queries";
 import type { SmellgateReviewTable } from "@/lib/db";
 import { getAccountHandle } from "@/lib/db/queries";
+import { getSession } from "@/lib/auth/session";
 import { PerfumeTile } from "@/components/PerfumeTile";
 
 type Params = Promise<{ did: string }>;
@@ -54,12 +55,18 @@ export default async function ProfilePage({ params }: { params: Params }) {
   const did = decodeURIComponent(rawDid);
 
   const db = getDb();
-  const [handle, shelf, reviews, descriptions] = await Promise.all([
+  const [session, handle, shelf, reviews, descriptions] = await Promise.all([
+    getSession(),
     getAccountHandle(did),
     getUserShelf(db, did),
     getUserReviews(db, did),
     getUserDescriptions(db, did),
   ]);
+  // Issue #131 reviewer follow-up: when the signed-in user is looking
+  // at their own profile, surface a link to /profile/me/submissions.
+  // Own-profile detection is the same (session.did === did) check used
+  // elsewhere; no extra round-trip.
+  const isSelf = session?.did === did;
 
   if (
     !handle &&
@@ -100,6 +107,16 @@ export default async function ProfilePage({ params }: { params: Params }) {
         <div className="mt-2 break-all font-mono text-xs text-zinc-500 dark:text-zinc-500">
           {did}
         </div>
+        {isSelf && (
+          <div className="mt-3">
+            <Link
+              href="/profile/me/submissions"
+              className="text-sm text-amber-700 underline hover:text-amber-800 dark:text-amber-400 dark:hover:text-amber-300"
+            >
+              My submissions →
+            </Link>
+          </div>
+        )}
       </section>
 
       {/* Shelf ------------------------------------------------------- */}

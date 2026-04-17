@@ -1,9 +1,11 @@
 /**
  * POST /api/smellgate/vote — up/down a description.
  *
- * Thin wrapper around `voteOnDescriptionAction`. Add-only writes —
- * a re-vote produces a fresh record on the user's PDS and read-time
- * dedupe in `lib/db/smellgate-queries.ts` keeps the latest.
+ * Thin wrapper around `voteOnDescriptionAction`. A re-vote produces
+ * a fresh record on the user's PDS; the action attempts to clean up
+ * prior votes on the same subject (see inline comment in the action)
+ * and the read-time dedupe in `lib/db/smellgate-queries.ts` keeps
+ * display correct regardless.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -28,7 +30,11 @@ export async function POST(request: NextRequest) {
   }
   try {
     const result = await voteOnDescriptionAction(getDb(), session, input);
-    return NextResponse.json({ success: true, uri: result.uri });
+    return NextResponse.json({
+      success: true,
+      uri: result.uri,
+      record: result.record,
+    });
   } catch (err) {
     if (err instanceof ActionError) {
       return NextResponse.json({ error: err.message }, { status: err.status });

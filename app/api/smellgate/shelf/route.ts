@@ -33,7 +33,14 @@ export async function POST(request: NextRequest) {
   }
   try {
     const result = await addToShelfAction(getDb(), session, input);
-    return NextResponse.json({ success: true, uri: result.uri });
+    // Issue #119 / #124: echo the persisted record. Optional fields
+    // (bottleSizeMl, isDecant, acquiredAt) only appear when set so
+    // the client can confirm they landed.
+    return NextResponse.json({
+      success: true,
+      uri: result.uri,
+      record: result.record,
+    });
   } catch (err) {
     if (err instanceof ActionError) {
       return NextResponse.json({ error: err.message }, { status: err.status });

@@ -27,7 +27,12 @@ export async function POST(request: NextRequest) {
   }
   try {
     const result = await postReviewAction(getDb(), session, input);
-    return NextResponse.json({ success: true, uri: result.uri });
+    // Issue #124: echo the persisted record.
+    return NextResponse.json({
+      success: true,
+      uri: result.uri,
+      record: result.record,
+    });
   } catch (err) {
     if (err instanceof ActionError) {
       return NextResponse.json({ error: err.message }, { status: err.status });

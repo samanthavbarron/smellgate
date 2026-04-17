@@ -55,6 +55,7 @@ import {
   getResolutionForSubmission,
   type PendingRewrite,
 } from "../db/smellgate-queries";
+import { getAccountHandle } from "../db/queries";
 import type {
   DatabaseSchema,
   SmellgatePerfumeSubmissionTable,
@@ -175,12 +176,106 @@ export interface RewriteResult {
 // List pending submissions (curator-gated).
 // ---------------------------------------------------------------------------
 
+/**
+ * The fully-decorated shape every pending-submissions consumer wants
+ * (SSR curator page, JSON API for the CLI, any future tooling). Issue
+ * #140 moved the notes + handle fan-out here so the two consumers
+ * can't drift.
+ *
+ * Field naming mirrors the column names the SSR page already consumed
+ * from the raw `SmellgatePerfumeSubmissionTable` row (`release_year`,
+ * `indexed_at`, `author_did`, `created_at`) plus the derived
+ * decorations (`notes`, `authorHandle`). Keeping the raw + decorated
+ * fields side-by-side lets the consumer pick.
+ */
+export interface DecoratedPendingSubmission {
+  uri: string;
+  cid: string;
+  authorDid: string;
+  authorHandle: string | null;
+  indexedAt: number;
+  name: string;
+  house: string;
+  creator: string | null;
+  releaseYear: number | null;
+  description: string | null;
+  rationale: string | null;
+  notes: string[];
+  createdAt: string;
+}
+
+export interface ListPendingSubmissionsResult {
+  submissions: DecoratedPendingSubmission[];
+}
+
 export async function listPendingSubmissionsAction(
   db: Db,
   session: OAuthSession,
-): Promise<SmellgatePerfumeSubmissionTable[]> {
+): Promise<ListPendingSubmissionsResult> {
   requireCurator(session);
-  return getPendingSubmissions(db);
+  const rows = await getPendingSubmissions(db);
+
+  const notesByUri = await loadNotesForSubmissions(db, rows);
+  const handlesByDid = await loadHandlesForSubmissions(rows);
+
+  const submissions: DecoratedPendingSubmission[] = rows.map((s) => ({
+    uri: s.uri,
+    cid: s.cid,
+    authorDid: s.author_did,
+    authorHandle: handlesByDid.get(s.author_did) ?? null,
+    indexedAt: s.indexed_at,
+    name: s.name,
+    house: s.house,
+    creator: s.creator,
+    releaseYear: s.release_year,
+    description: s.description,
+    rationale: s.rationale,
+    notes: notesByUri.get(s.uri) ?? [],
+    createdAt: s.created_at,
+  }));
+
+  return { submissions };
+}
+
+/**
+ * Batch-load note chips for a set of pending submissions. Single
+ * `WHERE submission_uri IN (...)` round-trip, then group in JS.
+ * Exported at module scope so the curator page's legacy callsite is
+ * gone and this one implementation is canonical.
+ */
+async function loadNotesForSubmissions(
+  db: Db,
+  submissions: SmellgatePerfumeSubmissionTable[],
+): Promise<Map<string, string[]>> {
+  const uris = submissions.map((s) => s.uri);
+  if (uris.length === 0) return new Map();
+  const rows = await db
+    .selectFrom("smellgate_perfume_submission_note")
+    .select(["submission_uri", "note"])
+    .where("submission_uri", "in", uris)
+    .execute();
+  const out = new Map<string, string[]>();
+  for (const row of rows) {
+    const list = out.get(row.submission_uri) ?? [];
+    list.push(row.note);
+    out.set(row.submission_uri, list);
+  }
+  return out;
+}
+
+/**
+ * Resolve a handle for each distinct submitter DID via
+ * `getAccountHandle`, which already falls back to Tap's identity
+ * resolver when the account isn't cached.
+ */
+async function loadHandlesForSubmissions(
+  submissions: SmellgatePerfumeSubmissionTable[],
+): Promise<Map<string, string | null>> {
+  const dids = Array.from(new Set(submissions.map((s) => s.author_did)));
+  const entries = await Promise.all(
+    dids.map(async (did) => [did, await getAccountHandle(did)] as const),
+  );
+  return new Map(entries);
 }
 
 // ---------------------------------------------------------------------------

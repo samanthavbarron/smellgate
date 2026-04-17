@@ -4,9 +4,13 @@
  * Perfume-submission composer (Phase 4.D, issue #69).
  *
  * Writes a `com.smellgate.perfumeSubmission` record via
- * `/api/smellgate/submission`, then redirects to `/profile/me` so the
- * user can see the record they just created. Curator resolution of
- * the submission happens separately (Phase 4.E).
+ * `/api/smellgate/submission`. On success, shows an inline
+ * confirmation with the server's `status` / `message` (issue #111)
+ * and a link to `/profile/me/submissions` (#131), **before** routing
+ * anywhere — otherwise a web-UI submitter would never see the
+ * "queued for curator review" message that only lives in the JSON
+ * response. The confirmation surfaces the `idempotent: true` case
+ * too so a re-submit doesn't silently look identical to a fresh one.
  *
  * `notes` is entered as a comma-separated string; we split, trim,
  * lowercase, and dedupe before sending — matching what
@@ -14,8 +18,8 @@
  * the same rules surfaced in the UI.
  */
 
+import Link from "next/link";
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 
 function normalizeNotes(input: string): string[] {
   const seen = new Set<string>();
@@ -30,8 +34,14 @@ function normalizeNotes(input: string): string[] {
   return out;
 }
 
+interface SubmitSuccess {
+  uri: string;
+  status: string;
+  message: string;
+  idempotent?: boolean;
+}
+
 export function PerfumeSubmissionComposer() {
-  const router = useRouter();
   const [name, setName] = useState("");
   const [house, setHouse] = useState("");
   const [creator, setCreator] = useState("");
@@ -41,6 +51,7 @@ export function PerfumeSubmissionComposer() {
   const [rationale, setRationale] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<SubmitSuccess | null>(null);
 
   const notes = normalizeNotes(notesText);
 
@@ -89,16 +100,79 @@ export function PerfumeSubmissionComposer() {
       });
       const data = (await res.json().catch(() => ({}))) as {
         error?: string;
+        uri?: string;
+        status?: string;
+        message?: string;
+        idempotent?: boolean;
       };
       if (!res.ok) {
         throw new Error(data.error ?? `Request failed (${res.status})`);
       }
-      router.push("/profile/me");
-      router.refresh();
+      // Issue #111: surface the server's human-readable status in the
+      // UI, not just the CLI. We keep the user on this page with an
+      // inline confirmation + a link to /profile/me/submissions —
+      // this replaces the old `router.push("/profile/me")` behavior
+      // which silently dropped the new submission into a redirect.
+      setSuccess({
+        uri: data.uri ?? "",
+        status: data.status ?? "pending_review",
+        message:
+          data.message ?? "Your submission is queued for curator review.",
+        idempotent: data.idempotent,
+      });
+      setLoading(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
       setLoading(false);
     }
+  }
+
+  if (success) {
+    return (
+      <div
+        role="status"
+        className="space-y-3 rounded-lg border border-amber-500 bg-amber-50 p-6 dark:border-amber-500 dark:bg-amber-950"
+      >
+        <h2 className="text-lg font-semibold tracking-tight text-amber-900 dark:text-amber-100">
+          {success.idempotent
+            ? "You already submitted this perfume."
+            : "Submission received."}
+        </h2>
+        <p className="text-sm text-amber-800 dark:text-amber-200">
+          {success.message}
+        </p>
+        {success.uri && (
+          <div className="break-all font-mono text-xs text-amber-700 dark:text-amber-300">
+            {success.uri}
+          </div>
+        )}
+        <div className="flex flex-wrap gap-2 pt-2">
+          <Link
+            href="/profile/me/submissions"
+            className="rounded-md border border-amber-600 bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-700 dark:border-amber-500 dark:bg-amber-500 dark:hover:bg-amber-600"
+          >
+            View my submissions
+          </Link>
+          <button
+            type="button"
+            onClick={() => {
+              setSuccess(null);
+              setName("");
+              setHouse("");
+              setCreator("");
+              setReleaseYear("");
+              setNotesText("");
+              setDescription("");
+              setRationale("");
+              setError(null);
+            }}
+            className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:border-amber-600 hover:text-amber-700 dark:border-zinc-700 dark:text-zinc-300 dark:hover:border-amber-500 dark:hover:text-amber-400"
+          >
+            Submit another
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (
