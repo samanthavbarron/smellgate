@@ -9,11 +9,10 @@
  *      `<SubmissionCard>` that POSTs to the Phase 3.C curator API
  *      routes at `/api/smellgate/curator/{approve,reject,duplicate}`.
  *
- * Data: reads directly from the Phase 2.B cache via
- * `getPendingSubmissions`, then fans out to
- * `smellgate_perfume_submission_note` for the note chips and to
- * `getAccountHandle` for each submitter. No per-row queries for
- * perfumes — the dashboard only shows submission fields.
+ * Data: issue #140 moved the `notes` + `authorHandle` fan-out into
+ * `listPendingSubmissionsAction` so the SSR page and the JSON API
+ * return the same decorated shape. We consume the decorated value
+ * here and hand it straight to `<SubmissionCard>`.
  *
  * The duplicate-picker is a plain text input where the curator pastes
  * an AT-URI. Real search integration is deferred to a follow-up on
@@ -23,9 +22,7 @@
 import { getDb } from "@/lib/db";
 import { getSession } from "@/lib/auth/session";
 import { isCurator } from "@/lib/curators";
-import { getPendingSubmissions } from "@/lib/db/smellgate-queries";
-import { getAccountHandle } from "@/lib/db/queries";
-import type { SmellgatePerfumeSubmissionTable } from "@/lib/db";
+import { listPendingSubmissionsAction } from "@/lib/server/smellgate-curator-actions";
 import { SubmissionCard } from "@/components/curator/SubmissionCard";
 
 export default async function CuratorPage() {
@@ -50,13 +47,7 @@ export default async function CuratorPage() {
   }
 
   const db = getDb();
-  const submissions = await getPendingSubmissions(db);
-
-  // Fan out: note chips and submitter handles. Kept as two small
-  // round-trips rather than stuffing them into the pending-submissions
-  // query so we don't have to touch lib/db/smellgate-queries.ts.
-  const notesByUri = await loadNotes(db, submissions);
-  const handlesByDid = await loadHandles(submissions);
+  const { submissions } = await listPendingSubmissionsAction(db, session);
 
   return (
     <div className="space-y-8">
@@ -77,58 +68,13 @@ export default async function CuratorPage() {
         <ul className="space-y-4">
           {submissions.map((submission) => (
             <li key={submission.uri}>
-              <SubmissionCard
-                submission={{
-                  uri: submission.uri,
-                  name: submission.name,
-                  house: submission.house,
-                  creator: submission.creator,
-                  releaseYear: submission.release_year,
-                  description: submission.description,
-                  rationale: submission.rationale,
-                  createdAt: submission.created_at,
-                  indexedAt: submission.indexed_at,
-                  authorDid: submission.author_did,
-                  notes: notesByUri.get(submission.uri) ?? [],
-                  authorHandle: handlesByDid.get(submission.author_did) ?? null,
-                }}
-              />
+              <SubmissionCard submission={submission} />
             </li>
           ))}
         </ul>
       )}
     </div>
   );
-}
-
-async function loadNotes(
-  db: ReturnType<typeof getDb>,
-  submissions: SmellgatePerfumeSubmissionTable[],
-): Promise<Map<string, string[]>> {
-  const uris = submissions.map((s) => s.uri);
-  if (uris.length === 0) return new Map();
-  const rows = await db
-    .selectFrom("smellgate_perfume_submission_note")
-    .select(["submission_uri", "note"])
-    .where("submission_uri", "in", uris)
-    .execute();
-  const out = new Map<string, string[]>();
-  for (const row of rows) {
-    const list = out.get(row.submission_uri) ?? [];
-    list.push(row.note);
-    out.set(row.submission_uri, list);
-  }
-  return out;
-}
-
-async function loadHandles(
-  submissions: SmellgatePerfumeSubmissionTable[],
-): Promise<Map<string, string | null>> {
-  const dids = Array.from(new Set(submissions.map((s) => s.author_did)));
-  const entries = await Promise.all(
-    dids.map(async (did) => [did, await getAccountHandle(did)] as const),
-  );
-  return new Map(entries);
 }
 
 function ForbiddenCard({ title, body }: { title: string; body: string }) {

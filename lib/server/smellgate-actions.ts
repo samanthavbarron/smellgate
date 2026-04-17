@@ -37,7 +37,10 @@ import type { OAuthSession } from "@atproto/oauth-client-node";
 import { AtUri } from "@atproto/syntax";
 import type { Kysely } from "kysely";
 import * as com from "../lexicons/com";
-import { getPerfumeByUri } from "../db/smellgate-queries";
+import {
+  getPerfumeByUri,
+  getResolutionForSubmission,
+} from "../db/smellgate-queries";
 import type { DatabaseSchema } from "../db";
 import { countGraphemes } from "../graphemes";
 import { normalizeNotes, sanitizeFreeText } from "./write-guards";
@@ -189,14 +192,96 @@ export interface ActionResult {
  * Result shape for `submitPerfumeAction`. Includes the normalized
  * `notes[]` so the UI can show the submitter what got stored — per
  * issue #128, silent normalization without echo is almost as bad as
- * no normalization at all.
+ * no normalization at all. Also includes the echoed submission record
+ * (per issue #111/#124) so the UI can confirm the stored values, plus
+ * `status`/`message` so clients know this is pending curator review
+ * rather than live, and `indexed: false` so CLIs can poll.
+ *
+ * `idempotent: true` indicates the request matched an existing pending
+ * submission from the same submitter (same name + house, case-folded).
+ * No new record was written; `uri` points at the existing one. See
+ * issue #126.
  */
 export interface SubmitPerfumeResult {
   uri: string;
+  status: "pending_review";
+  message: string;
+  indexed: false;
+  idempotent?: boolean;
+  record: {
+    name: string;
+    house: string;
+    creator?: string;
+    releaseYear?: number;
+    notes: string[];
+    description?: string;
+    rationale?: string;
+    createdAt: string;
+  };
+  /** @deprecated use `record` — kept for backwards compatibility with #128. */
   normalized: {
     notes: string[];
     description?: string;
     rationale?: string;
+  };
+}
+
+/**
+ * Result shape for `addToShelfAction`. Echoes the persisted record so
+ * the client can confirm the optional fields landed (per issue #119).
+ */
+export interface AddToShelfResult {
+  uri: string;
+  indexed: false;
+  record: {
+    perfumeUri: string;
+    bottleSizeMl?: number;
+    isDecant?: boolean;
+    acquiredAt?: string;
+    createdAt: string;
+  };
+}
+
+export interface PostReviewResult {
+  uri: string;
+  indexed: false;
+  record: {
+    perfumeUri: string;
+    rating: number;
+    sillage: number;
+    longevity: number;
+    body: string;
+    createdAt: string;
+  };
+}
+
+export interface PostDescriptionResult {
+  uri: string;
+  indexed: false;
+  record: {
+    perfumeUri: string;
+    body: string;
+    createdAt: string;
+  };
+}
+
+export interface VoteOnDescriptionResult {
+  uri: string;
+  indexed: false;
+  record: {
+    descriptionUri: string;
+    direction: "up" | "down";
+    createdAt: string;
+  };
+}
+
+export interface CommentOnReviewResult {
+  uri: string;
+  indexed: false;
+  record: {
+    reviewUri: string;
+    body: string;
+    createdAt: string;
   };
 }
 
@@ -252,19 +337,30 @@ async function requirePerfumeInCache(
 // ---------------------------------------------------------------------------
 
 /**
+ * Maximum bottle size we accept on a shelf entry. Commercial perfume
+ * bottles top out well under a litre (Creed Aventus caps at 500ml;
+ * decants can go smaller). 1000ml is a generous ceiling that rejects
+ * obvious nonsense (`999999`) without false-positiving a real large
+ * bottle. Chosen per issue #119. Enforced at the write edge since the
+ * lexicon itself has no bounds — the value is just `integer`.
+ */
+const MAX_BOTTLE_SIZE_ML = 1000;
+
+/**
  * Write a `com.smellgate.shelfItem` record to the user's PDS.
  *
  * Validation:
  * - `perfumeUri` must resolve to a known perfume in the cache.
  * - `acquiredAt`, when present, must parse as a date.
- * - `bottleSizeMl`, when present, must be a positive integer.
+ * - `bottleSizeMl`, when present, must be a positive integer within
+ *   `(0, MAX_BOTTLE_SIZE_ML]` (issue #119).
  * - `isDecant`, when present, must be a boolean.
  */
 export async function addToShelfAction(
   db: Db,
   session: OAuthSession,
   input: AddToShelfInput,
-): Promise<ActionResult> {
+): Promise<AddToShelfResult> {
   const target = await requirePerfumeInCache(db, input.perfumeUri);
 
   const acquiredAt = requireDatetime(input.acquiredAt, "acquiredAt");
@@ -272,6 +368,9 @@ export async function addToShelfAction(
   if (input.bottleSizeMl !== undefined) {
     if (!isFiniteInt(input.bottleSizeMl) || input.bottleSizeMl <= 0) {
       bad("bottleSizeMl must be a positive integer");
+    }
+    if (input.bottleSizeMl > MAX_BOTTLE_SIZE_ML) {
+      bad(`bottleSizeMl must be ≤ ${MAX_BOTTLE_SIZE_ML}`);
     }
     bottleSizeMl = input.bottleSizeMl;
   }
@@ -281,15 +380,26 @@ export async function addToShelfAction(
     isDecant = input.isDecant;
   }
 
+  const createdAt = nowDatetime();
   const lexClient = new Client(session);
   const res = await lexClient.create(com.smellgate.shelfItem.main, {
     perfume: target,
     acquiredAt,
     bottleSizeMl,
     isDecant,
-    createdAt: nowDatetime(),
+    createdAt,
   });
-  return { uri: res.uri };
+  return {
+    uri: res.uri,
+    indexed: false,
+    record: {
+      perfumeUri: input.perfumeUri,
+      ...(bottleSizeMl !== undefined ? { bottleSizeMl } : {}),
+      ...(isDecant !== undefined ? { isDecant } : {}),
+      ...(acquiredAt !== undefined ? { acquiredAt: acquiredAt as unknown as string } : {}),
+      createdAt: createdAt as unknown as string,
+    },
+  };
 }
 
 /**
@@ -309,7 +419,7 @@ export async function postReviewAction(
   db: Db,
   session: OAuthSession,
   input: PostReviewInput,
-): Promise<ActionResult> {
+): Promise<PostReviewResult> {
   const target = await requirePerfumeInCache(db, input.perfumeUri);
   const rating = requireIntInRange(input.rating, "rating", 1, 10);
   const sillage = requireIntInRange(input.sillage, "sillage", 1, 5);
@@ -322,6 +432,7 @@ export async function postReviewAction(
   const body = sanitizeFreeText(rawBody, "body");
   if (countGraphemes(body) > 15000) bad("body too long (max 15000 graphemes)");
 
+  const createdAt = nowDatetime();
   const lexClient = new Client(session);
   const res = await lexClient.create(com.smellgate.review.main, {
     perfume: target,
@@ -329,9 +440,20 @@ export async function postReviewAction(
     sillage,
     longevity,
     body,
-    createdAt: nowDatetime(),
+    createdAt,
   });
-  return { uri: res.uri };
+  return {
+    uri: res.uri,
+    indexed: false,
+    record: {
+      perfumeUri: input.perfumeUri,
+      rating,
+      sillage,
+      longevity,
+      body,
+      createdAt: createdAt as unknown as string,
+    },
+  };
 }
 
 /**
@@ -344,7 +466,7 @@ export async function postDescriptionAction(
   db: Db,
   session: OAuthSession,
   input: PostDescriptionInput,
-): Promise<ActionResult> {
+): Promise<PostDescriptionResult> {
   const target = await requirePerfumeInCache(db, input.perfumeUri);
   const rawBody = requireString(input.body, "body");
   if (rawBody.trim().length === 0) bad("body must not be empty");
@@ -354,29 +476,40 @@ export async function postDescriptionAction(
   const body = sanitizeFreeText(rawBody, "body");
   if (countGraphemes(body) > 5000) bad("body too long (max 5000 graphemes)");
 
+  const createdAt = nowDatetime();
   const lexClient = new Client(session);
   const res = await lexClient.create(com.smellgate.description.main, {
     perfume: target,
     body,
-    createdAt: nowDatetime(),
+    createdAt,
   });
-  return { uri: res.uri };
+  return {
+    uri: res.uri,
+    indexed: false,
+    record: {
+      perfumeUri: input.perfumeUri,
+      body,
+      createdAt: createdAt as unknown as string,
+    },
+  };
 }
 
 /**
  * Write a `com.smellgate.vote` record to the user's PDS.
  *
  * Validation: `descriptionUri` must resolve in the cache; `direction`
- * must be exactly `"up"` or `"down"`. We do NOT delete or mutate any
- * prior vote record from the same user — Phase 2.B's read-time dedupe
- * keeps only the latest vote per (author, subject) and that's the
- * agreed model. Add-only writes.
+ * must be exactly `"up"` or `"down"`. The write is still add-only at
+ * the ATProto level — each vote becomes a new record — but before
+ * creating we attempt to delete any prior vote records from the same
+ * author pointing at the same subject (issue #135 part 2, the
+ * duplicate-vote guard). See the inline comment on the cleanup block
+ * for why we read-then-delete rather than use strict uniqueness.
  */
 export async function voteOnDescriptionAction(
   db: Db,
   session: OAuthSession,
   input: VoteOnDescriptionInput,
-): Promise<ActionResult> {
+): Promise<VoteOnDescriptionResult> {
   const subjectUri = input.descriptionUri;
   if (!isNonEmptyString(subjectUri, 8192)) bad("descriptionUri is required");
   if (input.direction !== "up" && input.direction !== "down") {
@@ -415,10 +548,13 @@ export async function voteOnDescriptionAction(
   //
   // We use the session's authenticated fetchHandler directly rather
   // than the lexicon client because we just need the raw listRecords
-  // + deleteRecord endpoints. A single page of 100 vote records is
-  // plenty — a user would have to manually spam the vote button
-  // hundreds of times on ONE description to exceed it, and even
-  // then we'd still delete the first 100 (degraded but safe).
+  // + deleteRecord endpoints. The 100-record threshold is a ceiling
+  // on the user's *total* votes we scan per call, not a per-subject
+  // limit: a user would have to cast hundreds of votes total before
+  // an older stray vote on this same subject fell off the first
+  // page. Even in that degraded case we still succeed in cleaning
+  // the most recent duplicate and fall back to the read-layer
+  // dedupe for anything missed.
   try {
     const listUrl =
       `/xrpc/com.atproto.repo.listRecords` +
@@ -460,12 +596,21 @@ export async function voteOnDescriptionAction(
     );
   }
 
+  const createdAt = nowDatetime();
   const res = await lexClient.create(com.smellgate.vote.main, {
     subject: strongRef(subjectUri, cid),
     direction: input.direction,
-    createdAt: nowDatetime(),
+    createdAt,
   });
-  return { uri: res.uri };
+  return {
+    uri: res.uri,
+    indexed: false,
+    record: {
+      descriptionUri: subjectUri,
+      direction: input.direction,
+      createdAt: createdAt as unknown as string,
+    },
+  };
 }
 
 /**
@@ -479,7 +624,7 @@ export async function commentOnReviewAction(
   db: Db,
   session: OAuthSession,
   input: CommentOnReviewInput,
-): Promise<ActionResult> {
+): Promise<CommentOnReviewResult> {
   const subjectUri = input.reviewUri;
   if (!isNonEmptyString(subjectUri, 8192)) bad("reviewUri is required");
   const rawBody = requireString(input.body, "body");
@@ -490,13 +635,22 @@ export async function commentOnReviewAction(
   const cid = await getReviewCid(db, subjectUri);
   if (!cid) notFound(`unknown review: ${subjectUri}`);
 
+  const createdAt = nowDatetime();
   const lexClient = new Client(session);
   const res = await lexClient.create(com.smellgate.comment.main, {
     subject: strongRef(subjectUri, cid),
     body,
-    createdAt: nowDatetime(),
+    createdAt,
   });
-  return { uri: res.uri };
+  return {
+    uri: res.uri,
+    indexed: false,
+    record: {
+      reviewUri: subjectUri,
+      body,
+      createdAt: createdAt as unknown as string,
+    },
+  };
 }
 
 /**
@@ -574,6 +728,123 @@ export async function submitPerfumeAction(
   }
 
   const lexClient = new Client(session);
+
+  // Issue #126: idempotent duplicate-submission guard. Before creating
+  // a new submission, scan the user's own PDS for prior
+  // `com.smellgate.perfumeSubmission` records that case-fold to the
+  // same (name, house). If we find one, return it and mark the response
+  // `idempotent: true` rather than writing a second pending record.
+  //
+  // Why scan the PDS and not the local Tap cache: the cache lags the
+  // firehose, and the worst cache-miss case is exactly the one this
+  // guard is trying to close (double-submit within the firehose delay).
+  // A single `listRecords` page against the submitter's own repo is
+  // authoritative and fast.
+  //
+  // The cap on scanned records is the default listRecords page
+  // (100). A submitter with >100 prior submissions who also manages to
+  // double-submit an old one would fall through to a new record — we
+  // accept that edge case rather than paginate. The curator flow
+  // already tolerates duplicates via `markDuplicate`.
+  try {
+    const listUrl =
+      `/xrpc/com.atproto.repo.listRecords` +
+      `?repo=${encodeURIComponent(session.did)}` +
+      `&collection=com.smellgate.perfumeSubmission` +
+      `&limit=100`;
+    const listRes = await session.fetchHandler(listUrl, { method: "GET" });
+    if (listRes.ok) {
+      const body = (await listRes.json()) as {
+        records?: {
+          uri: string;
+          value: {
+            name?: unknown;
+            house?: unknown;
+            notes?: unknown;
+            description?: unknown;
+            rationale?: unknown;
+            creator?: unknown;
+            releaseYear?: unknown;
+            createdAt?: unknown;
+          };
+        }[];
+      };
+      const nameKey = name.trim().toLowerCase();
+      const houseKey = house.trim().toLowerCase();
+      for (const rec of body.records ?? []) {
+        const v = rec.value ?? {};
+        const n = typeof v.name === "string" ? v.name.trim().toLowerCase() : "";
+        const h =
+          typeof v.house === "string" ? v.house.trim().toLowerCase() : "";
+        if (n === nameKey && h === houseKey) {
+          // Found a prior pending submission for the same
+          // (name, house). Echo it back idempotently. We deliberately
+          // do NOT check resolution status here: if a curator has
+          // already resolved this submission (approved/rejected), the
+          // next submission attempt is arguably a NEW proposal — but
+          // we still short-circuit to avoid the silent-dup behavior
+          // the issue complains about. The submitter can see the
+          // status on /profile/me/submissions (#131).
+          return {
+            uri: rec.uri,
+            status: "pending_review",
+            message:
+              "You already have a submission for this perfume queued for curator review.",
+            indexed: false,
+            idempotent: true,
+            record: {
+              name: typeof v.name === "string" ? v.name : name,
+              house: typeof v.house === "string" ? v.house : house,
+              ...(typeof v.creator === "string"
+                ? { creator: v.creator }
+                : {}),
+              ...(typeof v.releaseYear === "number"
+                ? { releaseYear: v.releaseYear }
+                : {}),
+              notes: Array.isArray(v.notes)
+                ? (v.notes as unknown[]).filter(
+                    (x): x is string => typeof x === "string",
+                  )
+                : notes,
+              ...(typeof v.description === "string"
+                ? { description: v.description }
+                : {}),
+              ...(typeof v.rationale === "string"
+                ? { rationale: v.rationale }
+                : {}),
+              createdAt:
+                typeof v.createdAt === "string"
+                  ? v.createdAt
+                  : new Date().toISOString(),
+            },
+            normalized: {
+              notes: Array.isArray(v.notes)
+                ? (v.notes as unknown[]).filter(
+                    (x): x is string => typeof x === "string",
+                  )
+                : notes,
+              ...(typeof v.description === "string"
+                ? { description: v.description }
+                : {}),
+              ...(typeof v.rationale === "string"
+                ? { rationale: v.rationale }
+                : {}),
+            },
+          };
+        }
+      }
+    }
+    // On non-200 we proceed to write a fresh record. A transient PDS
+    // read error should not block a submission that is itself a write
+    // — failing-open matches the voteOnDescription precedent.
+  } catch (err) {
+    console.warn(
+      `submitPerfumeAction: duplicate-check list failed for did=${session.did}:`,
+      err,
+    );
+  }
+
+  const createdAt = nowDatetime();
   const res = await lexClient.create(com.smellgate.perfumeSubmission.main, {
     name,
     house,
@@ -582,14 +853,177 @@ export async function submitPerfumeAction(
     notes,
     description,
     rationale,
-    createdAt: nowDatetime(),
+    createdAt,
   });
   return {
     uri: res.uri,
+    status: "pending_review",
+    message: "Your submission is queued for curator review.",
+    indexed: false,
+    record: {
+      name,
+      house,
+      ...(creator !== undefined ? { creator } : {}),
+      ...(releaseYear !== undefined ? { releaseYear } : {}),
+      notes,
+      ...(description !== undefined ? { description } : {}),
+      ...(rationale !== undefined ? { rationale } : {}),
+      createdAt: createdAt as unknown as string,
+    },
     normalized: {
       notes,
       description,
       rationale,
     },
   };
+}
+
+// ---------------------------------------------------------------------------
+// My submissions listing (issue #131)
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolution state of a single submission from the submitter's
+ * perspective. `pending` means no resolution exists yet. The three
+ * resolution-kind strings mirror the lexicon enum.
+ */
+export type SubmissionState = "pending" | "approved" | "rejected" | "duplicate";
+
+export interface MySubmissionItem {
+  uri: string;
+  state: SubmissionState;
+  name: string;
+  house: string;
+  creator?: string;
+  releaseYear?: number;
+  notes: string[];
+  description?: string;
+  rationale?: string;
+  createdAt: string;
+  /** Canonical perfume AT-URI from the resolution (approved / duplicate only). */
+  resolvedPerfumeUri?: string;
+  /** Curator's note on rejection, if provided. */
+  resolutionNote?: string;
+  /** Resolution record's own AT-URI, useful for audit links. */
+  resolutionUri?: string;
+}
+
+/**
+ * Group a flat list of submissions by resolution state. Pure function
+ * so it can be unit-tested without touching the PDS. Ordering within
+ * each bucket follows input order (which in turn is PDS list order —
+ * newest first, the ATProto default).
+ *
+ * Exported for unit tests AND for consumers that want to pre-sort the
+ * `/profile/me/submissions` page.
+ */
+export function groupSubmissionsByState(
+  items: MySubmissionItem[],
+): Record<SubmissionState, MySubmissionItem[]> {
+  const out: Record<SubmissionState, MySubmissionItem[]> = {
+    pending: [],
+    approved: [],
+    rejected: [],
+    duplicate: [],
+  };
+  for (const item of items) {
+    out[item.state].push(item);
+  }
+  return out;
+}
+
+/**
+ * List the authenticated user's own `com.smellgate.perfumeSubmission`
+ * records (from their PDS), cross-referenced against the cached
+ * resolution table to determine state. Issue #131.
+ *
+ * Why cache for resolutions: resolutions are curator-authored and
+ * live in the curator's repo, not the submitter's. The submitter's
+ * PDS can't show them directly. The local Tap cache is the cheap,
+ * app-local way to join those two sides without federating
+ * per-request. Cache lag means a very freshly resolved submission
+ * will show as `pending` until the firehose catches up — acceptable
+ * because the alternative is "follow every curator DID around and
+ * query their repo", which isn't feasible at request time.
+ *
+ * A single page (100) of the user's submissions is the maximum this
+ * returns today. Most submitters will stay well under. If we ever
+ * see a prolific submitter we'll paginate.
+ */
+export async function listMySubmissionsAction(
+  db: Db,
+  session: OAuthSession,
+): Promise<MySubmissionItem[]> {
+  const lexClient = new Client(session);
+  const res = await lexClient.list(com.smellgate.perfumeSubmission.main, {
+    limit: 100,
+  });
+
+  const items: MySubmissionItem[] = [];
+  for (const rec of res.records) {
+    const value = rec.value as {
+      name?: string;
+      house?: string;
+      creator?: string;
+      releaseYear?: number;
+      notes?: string[];
+      description?: string;
+      rationale?: string;
+      createdAt?: string;
+    };
+    const resolution = await getResolutionForSubmission(db, rec.uri);
+
+    let state: SubmissionState;
+    let resolvedPerfumeUri: string | undefined;
+    let resolutionNote: string | undefined;
+    let resolutionUri: string | undefined;
+    if (!resolution) {
+      state = "pending";
+    } else {
+      resolutionUri = resolution.uri;
+      resolvedPerfumeUri = resolution.perfume_uri ?? undefined;
+      resolutionNote = resolution.note ?? undefined;
+      if (
+        resolution.decision === "approved" ||
+        resolution.decision === "rejected" ||
+        resolution.decision === "duplicate"
+      ) {
+        state = resolution.decision;
+      } else {
+        // Defensive: any unknown decision value (should be impossible
+        // given the lexicon enum, but cache rows are just strings)
+        // falls back to `pending` rather than throwing.
+        state = "pending";
+      }
+    }
+
+    items.push({
+      uri: rec.uri,
+      state,
+      name: value.name ?? "",
+      house: value.house ?? "",
+      ...(typeof value.creator === "string" ? { creator: value.creator } : {}),
+      ...(typeof value.releaseYear === "number"
+        ? { releaseYear: value.releaseYear }
+        : {}),
+      notes: Array.isArray(value.notes)
+        ? value.notes.filter((n): n is string => typeof n === "string")
+        : [],
+      ...(typeof value.description === "string"
+        ? { description: value.description }
+        : {}),
+      ...(typeof value.rationale === "string"
+        ? { rationale: value.rationale }
+        : {}),
+      createdAt:
+        typeof value.createdAt === "string"
+          ? value.createdAt
+          : new Date(0).toISOString(),
+      ...(resolvedPerfumeUri ? { resolvedPerfumeUri } : {}),
+      ...(resolutionNote ? { resolutionNote } : {}),
+      ...(resolutionUri ? { resolutionUri } : {}),
+    });
+  }
+
+  return items;
 }

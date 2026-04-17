@@ -28,12 +28,19 @@ export async function POST(request: NextRequest) {
   }
   try {
     const result = await submitPerfumeAction(getDb(), session, input);
-    // Issue #128: echo the normalized values in the response so the
-    // submitter can see what actually got stored. Silent normalization
-    // is almost as bad as no normalization.
+    // Issue #111 / #124 / #126 / #128: echo the full envelope so the
+    // submitter can tell this is a submission (not a live record),
+    // see what was stored, and detect the idempotent-duplicate path.
     return NextResponse.json({
       success: true,
       uri: result.uri,
+      status: result.status,
+      message: result.message,
+      record: result.record,
+      indexed: result.indexed,
+      ...(result.idempotent ? { idempotent: true } : {}),
+      // Backwards-compatible alias for the #128 shape. New clients
+      // should read `record.notes` etc.
       normalized: result.normalized,
     });
   } catch (err) {
