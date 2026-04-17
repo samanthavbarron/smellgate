@@ -33,7 +33,7 @@ The Skylights pattern does not work for us: the perfume-world equivalents of TMD
 
 ### Curator account
 
-- Identity: a dedicated ATProto account (handle TBD, likely `smellgate.com` itself or `catalog.smellgate.com`) whose PDS holds the authoritative `com.smellgate.perfume` collection.
+- Identity: [`smellgate.bsky.social`](https://bsky.app/profile/smellgate.bsky.social), DID `did:plc:l6l3piyd3hywg76f2udorm53`. Its PDS holds the authoritative `com.smellgate.perfume` collection.
 - Curators: Samantha and Sam, manually, to start. No automated auto-approval in the initial implementation — humans look at every submission. This is acceptable because the initial catalog is small and the submission rate is zero.
 - Curator tooling lives inside the smellgate app, gated by a config list of curator DIDs. This is the only piece of the app that has a concept of "admin" — keep it simple, no roles/permissions system.
 
