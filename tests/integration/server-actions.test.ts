@@ -623,9 +623,14 @@ describe("smellgate server actions (Phase 3.B)", () => {
   // -- voteOnDescriptionAction ----------------------------------------------
 
   describe("voteOnDescriptionAction", () => {
+    // Descriptions authored by another DID — the self-vote guard
+    // (issue #135) rejects votes when `session.did === authorDid`, so
+    // the happy-path tests must use someone else's description.
+    const OTHER_AUTHOR_DID = "did:plc:other-description-author";
+
     it("writes a vote to the user's PDS for a known description", async () => {
       const perfumeUri = await seedPerfume(env, "Vote Target");
-      const descriptionUri = await seedDescription(env, alice.did, perfumeUri);
+      const descriptionUri = await seedDescription(env, OTHER_AUTHOR_DID, perfumeUri);
       const result = await env.actions.voteOnDescriptionAction(
         env.db.getDb(),
         aliceSession,
@@ -647,7 +652,7 @@ describe("smellgate server actions (Phase 3.B)", () => {
 
     it("rejects an invalid direction with 400 and writes nothing", async () => {
       const perfumeUri = await seedPerfume(env, "Direction Target");
-      const descriptionUri = await seedDescription(env, alice.did, perfumeUri);
+      const descriptionUri = await seedDescription(env, OTHER_AUTHOR_DID, perfumeUri);
       const beforeCount = await listRecordCount(
         aliceSession,
         alice.did,
@@ -723,5 +728,239 @@ describe("smellgate server actions (Phase 3.B)", () => {
       );
       expect(afterCount).toBe(beforeCount);
     }, 30_000);
+  });
+
+  // -- writeGuards: HTML sanitization at the write edge (#129 / #130) -------
+  //
+  // For each free-text field surface, write through the real action,
+  // read the resulting record back off the user's PDS, and assert the
+  // stored body has NO script tag and NO event-handler attribute.
+  // Going through the real PDS (not just unit-testing the sanitizer)
+  // is the signal AGENTS.md asks for: "A green unit suite with mocked
+  // ATProto calls is not a passing signal."
+
+  const XSS_PAYLOAD =
+    'Smells like <script>alert("xss")</script> pine needles and rain <img src=x onerror=alert(1)>.';
+
+  describe("writeGuards: HTML sanitization at the write edge", () => {
+    it("strips HTML from review body before writing to the PDS", async () => {
+      const perfumeUri = await seedPerfume(env, "XSS Review");
+      const result = await env.actions.postReviewAction(
+        env.db.getDb(),
+        aliceSession,
+        {
+          perfumeUri,
+          rating: 7,
+          sillage: 3,
+          longevity: 3,
+          body: XSS_PAYLOAD,
+        },
+      );
+      const fetched = await getRecord(aliceSession, result.uri);
+      const body = (fetched.value as { body: string }).body;
+      expect(body).not.toContain("<script");
+      expect(body).not.toContain("onerror");
+      expect(body).not.toContain("<img");
+      expect(body).not.toContain("alert(");
+      expect(body).toContain("pine needles");
+    }, 60_000);
+
+    it("strips HTML from description body before writing to the PDS", async () => {
+      const perfumeUri = await seedPerfume(env, "XSS Description");
+      const result = await env.actions.postDescriptionAction(
+        env.db.getDb(),
+        aliceSession,
+        {
+          perfumeUri,
+          body: XSS_PAYLOAD,
+        },
+      );
+      const fetched = await getRecord(aliceSession, result.uri);
+      const body = (fetched.value as { body: string }).body;
+      expect(body).not.toContain("<script");
+      expect(body).not.toContain("onerror");
+      expect(body).not.toContain("<img");
+      expect(body).not.toContain("alert(");
+    }, 60_000);
+
+    it("strips HTML from comment body before writing to the PDS", async () => {
+      const perfumeUri = await seedPerfume(env, "XSS Comment");
+      const reviewUri = await seedReview(env, alice.did, perfumeUri);
+      const result = await env.actions.commentOnReviewAction(
+        env.db.getDb(),
+        aliceSession,
+        { reviewUri, body: XSS_PAYLOAD },
+      );
+      const fetched = await getRecord(aliceSession, result.uri);
+      const body = (fetched.value as { body: string }).body;
+      expect(body).not.toContain("<script");
+      expect(body).not.toContain("onerror");
+      expect(body).not.toContain("<img");
+      expect(body).not.toContain("alert(");
+    }, 60_000);
+
+    it("rejects a body that is entirely HTML with 400 and writes nothing", async () => {
+      const perfumeUri = await seedPerfume(env, "All HTML");
+      const beforeCount = await listRecordCount(
+        aliceSession,
+        alice.did,
+        "com.smellgate.description",
+      );
+      await expect(
+        env.actions.postDescriptionAction(env.db.getDb(), aliceSession, {
+          perfumeUri,
+          body: "<script>alert(1)</script>",
+        }),
+      ).rejects.toMatchObject({ name: "ActionError", status: 400 });
+      const afterCount = await listRecordCount(
+        aliceSession,
+        alice.did,
+        "com.smellgate.description",
+      );
+      expect(afterCount).toBe(beforeCount);
+    }, 30_000);
+  });
+
+  // -- writeGuards: note normalization + echo (#128) -----------------------
+
+  describe("writeGuards: submitPerfumeAction note normalization", () => {
+    it("normalizes notes on submission and echoes the normalized array", async () => {
+      const result = await env.actions.submitPerfumeAction(
+        env.db.getDb(),
+        aliceSession,
+        {
+          name: "Unicode Tester",
+          house: "Test Maison",
+          // The exact repro from issue #128.
+          notes: ["🌸 rose", "RoSe", "   rose   ", "rose\n", "rose 🫶", "oud"],
+        },
+      );
+      // The response echoes the normalized notes (issue #128 explicit
+      // requirement).
+      expect(result.normalized.notes).toEqual(["rose", "oud"]);
+
+      // And the record on the PDS carries the same normalized notes.
+      const fetched = await getRecord(aliceSession, result.uri);
+      const value = fetched.value as { notes: string[] };
+      expect(value.notes).toEqual(["rose", "oud"]);
+    }, 60_000);
+
+    it("rejects a submission with a whitespace-only note with 400", async () => {
+      await expect(
+        env.actions.submitPerfumeAction(env.db.getDb(), aliceSession, {
+          name: "Bad Notes",
+          house: "House",
+          notes: ["rose", "   "],
+        }),
+      ).rejects.toMatchObject({ name: "ActionError", status: 400 });
+    }, 30_000);
+
+    it("strips HTML from submission description at the write edge (#129)", async () => {
+      const result = await env.actions.submitPerfumeAction(
+        env.db.getDb(),
+        aliceSession,
+        {
+          name: "XSS Test",
+          house: "Test House",
+          notes: ["test"],
+          description: XSS_PAYLOAD,
+          rationale:
+            'Please add <script>alert("xss")</script> this perfume.',
+        },
+      );
+      expect(result.normalized.description).toBeDefined();
+      expect(result.normalized.description).not.toContain("<script");
+      expect(result.normalized.description).not.toContain("onerror");
+      expect(result.normalized.rationale).toBeDefined();
+      expect(result.normalized.rationale).not.toContain("<script");
+
+      const fetched = await getRecord(aliceSession, result.uri);
+      const value = fetched.value as {
+        description?: string;
+        rationale?: string;
+      };
+      expect(value.description).toBeDefined();
+      expect(value.description).not.toContain("<script");
+      expect(value.description).not.toContain("onerror");
+      expect(value.rationale).toBeDefined();
+      expect(value.rationale).not.toContain("<script");
+    }, 60_000);
+  });
+
+  // -- writeGuards: self-vote + duplicate-vote guards (#135) ---------------
+
+  describe("writeGuards: vote guards", () => {
+    it("rejects a self-vote with 400 and writes nothing", async () => {
+      const perfumeUri = await seedPerfume(env, "Self Vote");
+      // Alice's own description.
+      const descriptionUri = await seedDescription(env, alice.did, perfumeUri);
+      const beforeCount = await listRecordCount(
+        aliceSession,
+        alice.did,
+        "com.smellgate.vote",
+      );
+      await expect(
+        env.actions.voteOnDescriptionAction(env.db.getDb(), aliceSession, {
+          descriptionUri,
+          direction: "up",
+        }),
+      ).rejects.toMatchObject({
+        name: "ActionError",
+        status: 400,
+      });
+      const afterCount = await listRecordCount(
+        aliceSession,
+        alice.did,
+        "com.smellgate.vote",
+      );
+      expect(afterCount).toBe(beforeCount);
+    }, 60_000);
+
+    it("replaces a prior vote by the same author on the same subject", async () => {
+      const perfumeUri = await seedPerfume(env, "Dup Vote");
+      const otherAuthor = "did:plc:another-description-author";
+      const descriptionUri = await seedDescription(env, otherAuthor, perfumeUri);
+
+      // First vote: up.
+      const first = await env.actions.voteOnDescriptionAction(
+        env.db.getDb(),
+        aliceSession,
+        { descriptionUri, direction: "up" },
+      );
+      expect(first.uri).toMatch(/^at:\/\//);
+
+      // Second vote: down. The duplicate-vote guard should delete
+      // the prior `up` vote before creating the new one. After the
+      // second call, alice's vote collection should contain exactly
+      // one record for this subject.
+      const second = await env.actions.voteOnDescriptionAction(
+        env.db.getDb(),
+        aliceSession,
+        { descriptionUri, direction: "down" },
+      );
+      expect(second.uri).toMatch(/^at:\/\//);
+      expect(second.uri).not.toBe(first.uri);
+
+      // List alice's votes, count how many still point at descriptionUri.
+      const listUrl =
+        `/xrpc/com.atproto.repo.listRecords` +
+        `?repo=${encodeURIComponent(alice.did)}` +
+        `&collection=com.smellgate.vote` +
+        `&limit=100`;
+      const listRes = await aliceSession.fetchHandler(listUrl, {
+        method: "GET",
+      });
+      const listBody = (await listRes.json()) as {
+        records: {
+          uri: string;
+          value: { subject?: { uri?: string }; direction?: string };
+        }[];
+      };
+      const matching = listBody.records.filter(
+        (r) => r.value?.subject?.uri === descriptionUri,
+      );
+      expect(matching).toHaveLength(1);
+      expect(matching[0].value.direction).toBe("down");
+    }, 90_000);
   });
 });

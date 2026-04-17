@@ -34,11 +34,13 @@
 
 import { Client, type l } from "@atproto/lex";
 import type { OAuthSession } from "@atproto/oauth-client-node";
+import { AtUri } from "@atproto/syntax";
 import type { Kysely } from "kysely";
 import * as com from "../lexicons/com";
 import { getPerfumeByUri } from "../db/smellgate-queries";
 import type { DatabaseSchema } from "../db";
 import { countGraphemes } from "../graphemes";
+import { normalizeNotes, sanitizeFreeText } from "./write-guards";
 
 type Db = Kysely<DatabaseSchema>;
 
@@ -183,6 +185,21 @@ export interface ActionResult {
   uri: string;
 }
 
+/**
+ * Result shape for `submitPerfumeAction`. Includes the normalized
+ * `notes[]` so the UI can show the submitter what got stored — per
+ * issue #128, silent normalization without echo is almost as bad as
+ * no normalization at all.
+ */
+export interface SubmitPerfumeResult {
+  uri: string;
+  normalized: {
+    notes: string[];
+    description?: string;
+    rationale?: string;
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Shared validation helpers
 // ---------------------------------------------------------------------------
@@ -297,8 +314,12 @@ export async function postReviewAction(
   const rating = requireIntInRange(input.rating, "rating", 1, 10);
   const sillage = requireIntInRange(input.sillage, "sillage", 1, 5);
   const longevity = requireIntInRange(input.longevity, "longevity", 1, 5);
-  const body = requireString(input.body, "body");
-  if (body.trim().length === 0) bad("body must not be empty");
+  const rawBody = requireString(input.body, "body");
+  if (rawBody.trim().length === 0) bad("body must not be empty");
+  // Issue #129/#130: sanitize at the write edge so no renderer has to
+  // be trusted. Reject after sanitization so a script-only body is a
+  // 400 rather than a silently-empty record.
+  const body = sanitizeFreeText(rawBody, "body");
   if (countGraphemes(body) > 15000) bad("body too long (max 15000 graphemes)");
 
   const lexClient = new Client(session);
@@ -325,8 +346,12 @@ export async function postDescriptionAction(
   input: PostDescriptionInput,
 ): Promise<ActionResult> {
   const target = await requirePerfumeInCache(db, input.perfumeUri);
-  const body = requireString(input.body, "body");
-  if (body.trim().length === 0) bad("body must not be empty");
+  const rawBody = requireString(input.body, "body");
+  if (rawBody.trim().length === 0) bad("body must not be empty");
+  // Issue #130: sanitize at the write edge. Community descriptions
+  // are shown on the public perfume detail page, so this is the
+  // highest-risk surface for the "render trusts the cache" foot-gun.
+  const body = sanitizeFreeText(rawBody, "body");
   if (countGraphemes(body) > 5000) bad("body too long (max 5000 graphemes)");
 
   const lexClient = new Client(session);
@@ -360,7 +385,81 @@ export async function voteOnDescriptionAction(
   const cid = await getDescriptionCid(db, subjectUri);
   if (!cid) notFound(`unknown description: ${subjectUri}`);
 
+  // Issue #135: self-vote guard. The description URI's authority IS
+  // the author DID — that's how ATProto at-uris work ("at://<did>/..."),
+  // so we can derive the author without another DB round-trip.
+  let authorDid: string;
+  try {
+    authorDid = new AtUri(subjectUri).hostname;
+  } catch {
+    bad(`invalid descriptionUri: ${subjectUri}`);
+  }
+  if (authorDid === session.did) {
+    bad("cannot vote on your own description");
+  }
+
   const lexClient = new Client(session);
+
+  // Issue #135 part 2: duplicate-vote guard at write time. The
+  // read-layer dedupe in `loadVoteTallies` keeps display sane but
+  // does not stop users from piling up vote records in their repo —
+  // which is both wasteful and a latent data-integrity smell if we
+  // ever ship a non-deduping renderer.
+  //
+  // Strategy: before creating a new vote, ask the user's PDS for
+  // their existing votes in the vote collection, find any that point
+  // at `subjectUri`, and delete them. Then write the new vote. This
+  // is a best-effort "replace the prior vote" rather than a hard 409
+  // — flipping a vote up→down is a normal user action and should
+  // succeed, just without accumulating records.
+  //
+  // We use the session's authenticated fetchHandler directly rather
+  // than the lexicon client because we just need the raw listRecords
+  // + deleteRecord endpoints. A single page of 100 vote records is
+  // plenty — a user would have to manually spam the vote button
+  // hundreds of times on ONE description to exceed it, and even
+  // then we'd still delete the first 100 (degraded but safe).
+  try {
+    const listUrl =
+      `/xrpc/com.atproto.repo.listRecords` +
+      `?repo=${encodeURIComponent(session.did)}` +
+      `&collection=com.smellgate.vote` +
+      `&limit=100`;
+    const listRes = await session.fetchHandler(listUrl, { method: "GET" });
+    if (listRes.ok) {
+      const body = (await listRes.json()) as {
+        records: {
+          uri: string;
+          value: { subject?: { uri?: string } };
+        }[];
+      };
+      for (const rec of body.records) {
+        if (rec.value?.subject?.uri === subjectUri) {
+          const { rkey } = new AtUri(rec.uri);
+          const delBody = {
+            repo: session.did,
+            collection: "com.smellgate.vote",
+            rkey,
+          };
+          await session.fetchHandler(`/xrpc/com.atproto.repo.deleteRecord`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(delBody),
+          });
+        }
+      }
+    }
+    // If listRecords fails we proceed anyway — the create call is
+    // still the authoritative write and the read-time dedupe keeps
+    // display correct. Logging rather than throwing is the right
+    // default: a transient PDS hiccup shouldn't block the vote itself.
+  } catch (err) {
+    console.warn(
+      `voteOnDescriptionAction: failed to clean up prior votes on ${subjectUri}:`,
+      err,
+    );
+  }
+
   const res = await lexClient.create(com.smellgate.vote.main, {
     subject: strongRef(subjectUri, cid),
     direction: input.direction,
@@ -383,8 +482,10 @@ export async function commentOnReviewAction(
 ): Promise<ActionResult> {
   const subjectUri = input.reviewUri;
   if (!isNonEmptyString(subjectUri, 8192)) bad("reviewUri is required");
-  const body = requireString(input.body, "body");
-  if (body.trim().length === 0) bad("body must not be empty");
+  const rawBody = requireString(input.body, "body");
+  if (rawBody.trim().length === 0) bad("body must not be empty");
+  // Issue #129/#130: sanitize at the write edge for comments too.
+  const body = sanitizeFreeText(rawBody, "body");
   if (countGraphemes(body) > 5000) bad("body too long (max 5000 graphemes)");
   const cid = await getReviewCid(db, subjectUri);
   if (!cid) notFound(`unknown review: ${subjectUri}`);
@@ -421,25 +522,16 @@ export async function submitPerfumeAction(
   _db: Db,
   session: OAuthSession,
   input: SubmitPerfumeInput,
-): Promise<ActionResult> {
+): Promise<SubmitPerfumeResult> {
   const name = requireString(input.name, "name");
   if (name.trim().length === 0) bad("name must not be empty");
   const house = requireString(input.house, "house");
   if (house.trim().length === 0) bad("house must not be empty");
 
-  if (!Array.isArray(input.notes) || input.notes.length === 0) {
-    bad("notes must be a non-empty array");
-  }
-  const seen = new Set<string>();
-  const notes: string[] = [];
-  for (const raw of input.notes) {
-    if (typeof raw !== "string") bad("notes must be an array of strings");
-    const normalized = raw.trim().toLowerCase();
-    if (normalized.length === 0) bad("notes must not contain empty strings");
-    if (seen.has(normalized)) continue;
-    seen.add(normalized);
-    notes.push(normalized);
-  }
+  // Canonical note normalization — NFC, trim, collapse whitespace,
+  // lowercase, strip edge emoji, dedupe. Throws 400 on whitespace-only
+  // entries. See lib/server/write-guards.ts (issue #128).
+  const notes = normalizeNotes(input.notes);
 
   let creator: string | undefined;
   if (input.creator !== undefined) {
@@ -457,26 +549,28 @@ export async function submitPerfumeAction(
     releaseYear = input.releaseYear;
   }
 
+  // Issue #129: sanitize the submission description at the write edge.
+  // No downstream renderer is trusted; we store plaintext.
   let description: string | undefined;
   if (input.description !== undefined) {
-    if (
-      typeof input.description !== "string" ||
-      input.description.trim().length === 0
-    ) {
+    if (typeof input.description !== "string") {
+      bad("description must be a string when provided");
+    }
+    if (input.description.trim().length === 0) {
       bad("description must be a non-empty string when provided");
     }
-    description = input.description;
+    description = sanitizeFreeText(input.description, "description");
   }
 
   let rationale: string | undefined;
   if (input.rationale !== undefined) {
-    if (
-      typeof input.rationale !== "string" ||
-      input.rationale.trim().length === 0
-    ) {
+    if (typeof input.rationale !== "string") {
+      bad("rationale must be a string when provided");
+    }
+    if (input.rationale.trim().length === 0) {
       bad("rationale must be a non-empty string when provided");
     }
-    rationale = input.rationale;
+    rationale = sanitizeFreeText(input.rationale, "rationale");
   }
 
   const lexClient = new Client(session);
@@ -490,5 +584,12 @@ export async function submitPerfumeAction(
     rationale,
     createdAt: nowDatetime(),
   });
-  return { uri: res.uri };
+  return {
+    uri: res.uri,
+    normalized: {
+      notes,
+      description,
+      rationale,
+    },
+  };
 }

@@ -28,7 +28,14 @@ export async function POST(request: NextRequest) {
   }
   try {
     const result = await submitPerfumeAction(getDb(), session, input);
-    return NextResponse.json({ success: true, uri: result.uri });
+    // Issue #128: echo the normalized values in the response so the
+    // submitter can see what actually got stored. Silent normalization
+    // is almost as bad as no normalization.
+    return NextResponse.json({
+      success: true,
+      uri: result.uri,
+      normalized: result.normalized,
+    });
   } catch (err) {
     if (err instanceof ActionError) {
       return NextResponse.json({ error: err.message }, { status: err.status });

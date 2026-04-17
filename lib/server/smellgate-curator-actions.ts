@@ -52,6 +52,7 @@ import {
   getPendingSubmissions,
   getPerfumeByUri,
   getPerfumeSubmissionByUri,
+  getResolutionForSubmission,
   type PendingRewrite,
 } from "../db/smellgate-queries";
 import type {
@@ -59,6 +60,7 @@ import type {
   SmellgatePerfumeSubmissionTable,
 } from "../db";
 import { ActionError } from "./smellgate-actions";
+import { normalizeNotes, sanitizeFreeText } from "./write-guards";
 
 export { ActionError } from "./smellgate-actions";
 
@@ -98,6 +100,31 @@ function notFound(message: string): never {
 function requireCurator(session: OAuthSession): void {
   if (!isCurator(session.did)) {
     forbidden("curator access required");
+  }
+}
+
+/**
+ * Issue #138: reject a curator action if the submission has already
+ * been resolved (approved / rejected / duplicate). Applied to all
+ * three of approve / reject / markDuplicate so that a double-click
+ * on any of those buttons can't mint a second canonical perfume or
+ * stack up conflicting resolutions.
+ *
+ * This is best-effort — it reads from the local Tap cache which lags
+ * the firehose — but it closes the common case (double-click / stale
+ * UI refresh) cleanly. A stronger uniqueness constraint at the
+ * lexicon / PDS level is tracked as a follow-up; see the issue body.
+ */
+async function requireNotAlreadyResolved(
+  db: Db,
+  submissionUri: string,
+): Promise<void> {
+  const prior = await getResolutionForSubmission(db, submissionUri);
+  if (prior) {
+    throw new ActionError(
+      400,
+      `submission already resolved as "${prior.decision}"`,
+    );
   }
 }
 
@@ -172,19 +199,41 @@ export async function approveSubmissionAction(
   const submission = await getPerfumeSubmissionByUri(db, input.submissionUri);
   if (!submission) notFound(`unknown submission: ${input.submissionUri}`);
 
+  // Issue #138: "already resolved" guard. The previous behavior
+  // would happily mint a second canonical perfume on a double-click.
+  // We check the cache (best-effort — it lags the firehose, but the
+  // common double-click case is fully covered because the first
+  // approve's resolution writes through the dispatcher before the
+  // second approve's button click lands).
+  await requireNotAlreadyResolved(db, input.submissionUri);
+
   const lexClient = new Client(session);
 
   // Step 1: write the canonical perfume record to the curator's PDS,
   // copying fields from the submission. Per docs/lexicons.md, the
   // canonical record is a fresh row in the curator's repo — it is NOT
   // an edit of the user's submission record.
+  //
+  // Defense-in-depth: re-normalize notes and re-sanitize the
+  // description even though the submission itself was normalized at
+  // write time. The cache row is populated by the firehose from the
+  // submitter's PDS, and a malicious (or compromised) PDS could in
+  // principle return a raw value that bypassed our submission-time
+  // guards. Re-applying the same helpers on the approve path keeps
+  // the canonical catalog clean regardless.
+  const canonicalNotes = normalizeNotes(submission.notes);
+  const canonicalDescription =
+    submission.description !== null && submission.description !== undefined
+      ? sanitizeFreeText(submission.description, "description")
+      : undefined;
+
   const perfumeRes = await lexClient.create(com.smellgate.perfume.main, {
     name: submission.name,
     house: submission.house,
     creator: submission.creator ?? undefined,
     releaseYear: submission.release_year ?? undefined,
-    notes: submission.notes,
-    description: submission.description ?? undefined,
+    notes: canonicalNotes,
+    description: canonicalDescription,
     createdAt: nowDatetime(),
   });
 
@@ -219,13 +268,20 @@ export async function rejectSubmissionAction(
   if (!input || typeof input.submissionUri !== "string") {
     bad("submissionUri is required");
   }
+  let note: string | undefined;
   if (input.note !== undefined) {
     if (typeof input.note !== "string" || input.note.trim().length === 0) {
       bad("note must be a non-empty string when provided");
     }
+    // Issue #129/#130: the rejection note is shown to the submitter,
+    // so it must be sanitized at the write edge.
+    note = sanitizeFreeText(input.note, "note");
   }
   const submission = await getPerfumeSubmissionByUri(db, input.submissionUri);
   if (!submission) notFound(`unknown submission: ${input.submissionUri}`);
+
+  // Issue #138: already-resolved guard.
+  await requireNotAlreadyResolved(db, input.submissionUri);
 
   const lexClient = new Client(session);
   const resolutionRes = await lexClient.create(
@@ -233,7 +289,7 @@ export async function rejectSubmissionAction(
     {
       submission: strongRef(submission.uri, submission.cid),
       decision: "rejected",
-      note: input.note,
+      note,
       createdAt: nowDatetime(),
     },
   );
@@ -262,6 +318,9 @@ export async function markDuplicateAction(
   if (!canonical) {
     notFound(`unknown canonical perfume: ${input.canonicalPerfumeUri}`);
   }
+
+  // Issue #138: already-resolved guard.
+  await requireNotAlreadyResolved(db, input.submissionUri);
 
   const lexClient = new Client(session);
   const resolutionRes = await lexClient.create(
