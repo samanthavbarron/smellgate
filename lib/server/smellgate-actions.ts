@@ -195,7 +195,7 @@ export interface ActionResult {
  * no normalization at all. Also includes the echoed submission record
  * (per issue #111/#124) so the UI can confirm the stored values, plus
  * `status`/`message` so clients know this is pending curator review
- * rather than live, and `indexed: false` so CLIs can poll.
+ * rather than live.
  *
  * `idempotent: true` indicates the request matched an existing pending
  * submission from the same submitter (same name + house, case-folded).
@@ -206,7 +206,6 @@ export interface SubmitPerfumeResult {
   uri: string;
   status: "pending_review";
   message: string;
-  indexed: false;
   idempotent?: boolean;
   record: {
     name: string;
@@ -232,7 +231,6 @@ export interface SubmitPerfumeResult {
  */
 export interface AddToShelfResult {
   uri: string;
-  indexed: false;
   record: {
     perfumeUri: string;
     bottleSizeMl?: number;
@@ -244,7 +242,6 @@ export interface AddToShelfResult {
 
 export interface PostReviewResult {
   uri: string;
-  indexed: false;
   record: {
     perfumeUri: string;
     rating: number;
@@ -257,7 +254,6 @@ export interface PostReviewResult {
 
 export interface PostDescriptionResult {
   uri: string;
-  indexed: false;
   record: {
     perfumeUri: string;
     body: string;
@@ -267,7 +263,6 @@ export interface PostDescriptionResult {
 
 export interface VoteOnDescriptionResult {
   uri: string;
-  indexed: false;
   record: {
     descriptionUri: string;
     direction: "up" | "down";
@@ -277,7 +272,6 @@ export interface VoteOnDescriptionResult {
 
 export interface CommentOnReviewResult {
   uri: string;
-  indexed: false;
   record: {
     reviewUri: string;
     body: string;
@@ -391,7 +385,6 @@ export async function addToShelfAction(
   });
   return {
     uri: res.uri,
-    indexed: false,
     record: {
       perfumeUri: input.perfumeUri,
       ...(bottleSizeMl !== undefined ? { bottleSizeMl } : {}),
@@ -444,7 +437,6 @@ export async function postReviewAction(
   });
   return {
     uri: res.uri,
-    indexed: false,
     record: {
       perfumeUri: input.perfumeUri,
       rating,
@@ -485,7 +477,6 @@ export async function postDescriptionAction(
   });
   return {
     uri: res.uri,
-    indexed: false,
     record: {
       perfumeUri: input.perfumeUri,
       body,
@@ -604,7 +595,6 @@ export async function voteOnDescriptionAction(
   });
   return {
     uri: res.uri,
-    indexed: false,
     record: {
       descriptionUri: subjectUri,
       direction: input.direction,
@@ -644,7 +634,6 @@ export async function commentOnReviewAction(
   });
   return {
     uri: res.uri,
-    indexed: false,
     record: {
       reviewUri: subjectUri,
       body,
@@ -673,7 +662,7 @@ export async function commentOnReviewAction(
  * a submission is a leaf record.
  */
 export async function submitPerfumeAction(
-  _db: Db,
+  db: Db,
   session: OAuthSession,
   input: SubmitPerfumeInput,
 ): Promise<SubmitPerfumeResult> {
@@ -776,62 +765,64 @@ export async function submitPerfumeAction(
         const n = typeof v.name === "string" ? v.name.trim().toLowerCase() : "";
         const h =
           typeof v.house === "string" ? v.house.trim().toLowerCase() : "";
-        if (n === nameKey && h === houseKey) {
-          // Found a prior pending submission for the same
-          // (name, house). Echo it back idempotently. We deliberately
-          // do NOT check resolution status here: if a curator has
-          // already resolved this submission (approved/rejected), the
-          // next submission attempt is arguably a NEW proposal — but
-          // we still short-circuit to avoid the silent-dup behavior
-          // the issue complains about. The submitter can see the
-          // status on /profile/me/submissions (#131).
-          return {
-            uri: rec.uri,
-            status: "pending_review",
-            message:
-              "You already have a submission for this perfume queued for curator review.",
-            indexed: false,
-            idempotent: true,
-            record: {
-              name: typeof v.name === "string" ? v.name : name,
-              house: typeof v.house === "string" ? v.house : house,
-              ...(typeof v.creator === "string"
-                ? { creator: v.creator }
-                : {}),
-              ...(typeof v.releaseYear === "number"
-                ? { releaseYear: v.releaseYear }
-                : {}),
-              notes: Array.isArray(v.notes)
-                ? (v.notes as unknown[]).filter(
-                    (x): x is string => typeof x === "string",
-                  )
-                : notes,
-              ...(typeof v.description === "string"
-                ? { description: v.description }
-                : {}),
-              ...(typeof v.rationale === "string"
-                ? { rationale: v.rationale }
-                : {}),
-              createdAt:
-                typeof v.createdAt === "string"
-                  ? v.createdAt
-                  : new Date().toISOString(),
-            },
-            normalized: {
-              notes: Array.isArray(v.notes)
-                ? (v.notes as unknown[]).filter(
-                    (x): x is string => typeof x === "string",
-                  )
-                : notes,
-              ...(typeof v.description === "string"
-                ? { description: v.description }
-                : {}),
-              ...(typeof v.rationale === "string"
-                ? { rationale: v.rationale }
-                : {}),
-            },
-          };
-        }
+        if (n !== nameKey || h !== houseKey) continue;
+
+        // Only short-circuit when the prior submission is still
+        // genuinely pending. If a curator already resolved it —
+        // approved, rejected, or marked duplicate — the new attempt
+        // is a fresh proposal (e.g. "try again with more notes after
+        // a rejection") and lying that it's "queued for curator
+        // review" would actively mislead the user. Fall through to
+        // the normal write path in that case.
+        const resolution = await getResolutionForSubmission(db, rec.uri);
+        if (resolution) continue;
+
+        // Found a prior PENDING submission for the same
+        // (name, house). Echo it back idempotently. The submitter can
+        // see the status on /profile/me/submissions (#131).
+        return {
+          uri: rec.uri,
+          status: "pending_review",
+          message:
+            "You already have a submission for this perfume queued for curator review.",
+          idempotent: true,
+          record: {
+            name: typeof v.name === "string" ? v.name : name,
+            house: typeof v.house === "string" ? v.house : house,
+            ...(typeof v.creator === "string" ? { creator: v.creator } : {}),
+            ...(typeof v.releaseYear === "number"
+              ? { releaseYear: v.releaseYear }
+              : {}),
+            notes: Array.isArray(v.notes)
+              ? (v.notes as unknown[]).filter(
+                  (x): x is string => typeof x === "string",
+                )
+              : notes,
+            ...(typeof v.description === "string"
+              ? { description: v.description }
+              : {}),
+            ...(typeof v.rationale === "string"
+              ? { rationale: v.rationale }
+              : {}),
+            createdAt:
+              typeof v.createdAt === "string"
+                ? v.createdAt
+                : new Date().toISOString(),
+          },
+          normalized: {
+            notes: Array.isArray(v.notes)
+              ? (v.notes as unknown[]).filter(
+                  (x): x is string => typeof x === "string",
+                )
+              : notes,
+            ...(typeof v.description === "string"
+              ? { description: v.description }
+              : {}),
+            ...(typeof v.rationale === "string"
+              ? { rationale: v.rationale }
+              : {}),
+          },
+        };
       }
     }
     // On non-200 we proceed to write a fresh record. A transient PDS
@@ -859,7 +850,6 @@ export async function submitPerfumeAction(
     uri: res.uri,
     status: "pending_review",
     message: "Your submission is queued for curator review.",
-    indexed: false,
     record: {
       name,
       house,
@@ -1025,5 +1015,11 @@ export async function listMySubmissionsAction(
     });
   }
 
+  // Sort newest-first by `createdAt`. PDS list order is implementation-
+  // defined and recovery-order after firehose re-index can shuffle
+  // records; sorting explicitly keeps the page stable.
+  // Lexicographic string compare on ISO-8601 is equivalent to numeric
+  // compare by epoch, so `localeCompare` is sufficient.
+  items.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   return items;
 }

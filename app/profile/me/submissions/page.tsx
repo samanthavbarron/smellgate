@@ -113,6 +113,15 @@ function SubmissionSection({
   );
 }
 
+function formatSubmittedAt(createdAt: string): string {
+  const d = new Date(createdAt);
+  if (Number.isNaN(d.getTime())) return createdAt;
+  // ISO with seconds, UTC — matches the breadcrumb format on the
+  // curator card. Avoids a locale-dependent display that would make
+  // the page non-deterministic in tests.
+  return d.toISOString().replace(/\.\d{3}Z$/, "Z");
+}
+
 function SubmissionRow({ item }: { item: MySubmissionItem }) {
   return (
     <article
@@ -129,6 +138,9 @@ function SubmissionRow({ item }: { item: MySubmissionItem }) {
             {item.house}
             {item.creator ? ` · ${item.creator}` : null}
             {item.releaseYear ? ` · ${item.releaseYear}` : null}
+          </div>
+          <div className="mt-1 text-xs text-zinc-500 dark:text-zinc-500">
+            Submitted {formatSubmittedAt(item.createdAt)}
           </div>
         </div>
         <StateChip state={item.state} />

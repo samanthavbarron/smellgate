@@ -27,13 +27,11 @@ export async function POST(request: NextRequest) {
   }
   try {
     const result = await postReviewAction(getDb(), session, input);
-    // Issue #124: echo the persisted record + `indexed: false` so
-    // clients can poll for firehose/cache catch-up.
+    // Issue #124: echo the persisted record.
     return NextResponse.json({
       success: true,
       uri: result.uri,
       record: result.record,
-      indexed: result.indexed,
     });
   } catch (err) {
     if (err instanceof ActionError) {

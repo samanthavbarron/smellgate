@@ -3,8 +3,9 @@
  * submissions for the curator UI / CLI. Curator-gated via `isCurator`
  * inside `listPendingSubmissionsAction`.
  *
- * Response shape is the same decorated `DecoratedPendingSubmission[]`
- * the SSR page consumes, plus a `totalPending` count (issue #140).
+ * Response shape is the decorated `DecoratedPendingSubmission[]` the
+ * SSR page consumes, so CLI triage sees notes + authorHandle without
+ * re-implementing the fan-out (issue #140).
  */
 
 import { NextResponse } from "next/server";
@@ -21,11 +22,11 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   try {
-    const { submissions, totalPending } = await listPendingSubmissionsAction(
+    const { submissions } = await listPendingSubmissionsAction(
       getDb(),
       session,
     );
-    return NextResponse.json({ submissions, totalPending });
+    return NextResponse.json({ submissions });
   } catch (err) {
     if (err instanceof ActionError) {
       return NextResponse.json({ error: err.message }, { status: err.status });

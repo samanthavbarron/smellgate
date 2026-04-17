@@ -485,9 +485,7 @@ describe("smellgate server actions (Phase 3.B)", () => {
         new RegExp(`^at://${alice.did}/com\\.smellgate\\.shelfItem/`),
       );
       // Issue #119: response echoes the persisted record, including
-      // the optional bottleSizeMl + isDecant flags. `indexed: false`
-      // is always present so CLIs can poll.
-      expect(result.indexed).toBe(false);
+      // the optional bottleSizeMl + isDecant flags.
       expect(result.record.perfumeUri).toBe(perfumeUri);
       expect(result.record.bottleSizeMl).toBe(100);
       expect(result.record.isDecant).toBe(false);
@@ -605,7 +603,6 @@ describe("smellgate server actions (Phase 3.B)", () => {
         new RegExp(`^at://${alice.did}/com\\.smellgate\\.review/`),
       );
       // Issue #124: response echoes the persisted record.
-      expect(result.indexed).toBe(false);
       expect(result.record.perfumeUri).toBe(perfumeUri);
       expect(result.record.rating).toBe(9);
       expect(result.record.sillage).toBe(4);
@@ -667,7 +664,6 @@ describe("smellgate server actions (Phase 3.B)", () => {
         new RegExp(`^at://${alice.did}/com\\.smellgate\\.description/`),
       );
       // Issue #124: response echoes the persisted record.
-      expect(result.indexed).toBe(false);
       expect(result.record.perfumeUri).toBe(perfumeUri);
       expect(result.record.body).toContain("aromatic");
       expect(typeof result.record.createdAt).toBe("string");
@@ -719,7 +715,6 @@ describe("smellgate server actions (Phase 3.B)", () => {
         new RegExp(`^at://${alice.did}/com\\.smellgate\\.vote/`),
       );
       // Issue #124: response echoes the persisted record.
-      expect(result.indexed).toBe(false);
       expect(result.record.descriptionUri).toBe(descriptionUri);
       expect(result.record.direction).toBe("up");
       expect(typeof result.record.createdAt).toBe("string");
@@ -783,7 +778,6 @@ describe("smellgate server actions (Phase 3.B)", () => {
         new RegExp(`^at://${alice.did}/com\\.smellgate\\.comment/`),
       );
       // Issue #124: response echoes the persisted record.
-      expect(result.indexed).toBe(false);
       expect(result.record.reviewUri).toBe(reviewUri);
       expect(result.record.body).toBe("Agree completely.");
       expect(typeof result.record.createdAt).toBe("string");
@@ -1071,7 +1065,6 @@ describe("smellgate server actions (Phase 3.B)", () => {
       );
       expect(result.status).toBe("pending_review");
       expect(result.message).toMatch(/curator/i);
-      expect(result.indexed).toBe(false);
       expect(result.record.name).toBe("Envelope Test");
       expect(result.record.house).toBe("Envelope House");
       expect(result.record.creator).toBe("Some Perfumer");
@@ -1150,6 +1143,52 @@ describe("smellgate server actions (Phase 3.B)", () => {
       expect(second.uri).toBe(first.uri);
       expect(second.idempotent).toBe(true);
     }, 90_000);
+
+    // Reviewer follow-up on #126: once a prior submission is resolved
+    // (rejected here), a re-submit is a fresh proposal — the server
+    // MUST NOT echo "queued for curator review" for something that
+    // has already been acted on. Tests that the idempotence guard
+    // short-circuits only on a genuinely pending prior.
+    it("creates a new submission when the prior one was resolved", async () => {
+      const first = await env.actions.submitPerfumeAction(
+        env.db.getDb(),
+        aliceSession,
+        {
+          name: "Resolved Resubmit",
+          house: "Resubmit House",
+          notes: ["oakmoss"],
+        },
+      );
+
+      // Dispatch a synthetic rejection resolution for `first`.
+      const rejectEvt = makeEvent(
+        "com.smellgate.perfumeSubmissionResolution",
+        FAKE_CURATOR_DID,
+        {
+          $type: "com.smellgate.perfumeSubmissionResolution",
+          submission: { uri: first.uri, cid: FAKE_CID },
+          decision: "rejected",
+          note: "Needs more detail.",
+          createdAt: nowIso(),
+        },
+      );
+      await env.tap.dispatchSmellgateEvent(env.db.getDb(), rejectEvt);
+
+      // Now resubmit the same (name, house). The idempotence guard
+      // should see the resolution and fall through to a fresh write.
+      const second = await env.actions.submitPerfumeAction(
+        env.db.getDb(),
+        aliceSession,
+        {
+          name: "Resolved Resubmit",
+          house: "Resubmit House",
+          notes: ["oakmoss", "patchouli"],
+          rationale: "Adding a missing note per curator feedback.",
+        },
+      );
+      expect(second.idempotent).toBeUndefined();
+      expect(second.uri).not.toBe(first.uri);
+    }, 120_000);
   });
 
   // -- response-shape sweep: listMySubmissionsAction (#131) ----------------

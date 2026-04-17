@@ -185,8 +185,8 @@ export interface RewriteResult {
  * Field naming mirrors the column names the SSR page already consumed
  * from the raw `SmellgatePerfumeSubmissionTable` row (`release_year`,
  * `indexed_at`, `author_did`, `created_at`) plus the derived
- * decorations (`notes`, `authorHandle`, `indexedAtIso`). Keeping the
- * raw + decorated fields side-by-side lets the consumer pick.
+ * decorations (`notes`, `authorHandle`). Keeping the raw + decorated
+ * fields side-by-side lets the consumer pick.
  */
 export interface DecoratedPendingSubmission {
   uri: string;
@@ -194,7 +194,6 @@ export interface DecoratedPendingSubmission {
   authorDid: string;
   authorHandle: string | null;
   indexedAt: number;
-  indexedAtIso: string;
   name: string;
   house: string;
   creator: string | null;
@@ -207,13 +206,6 @@ export interface DecoratedPendingSubmission {
 
 export interface ListPendingSubmissionsResult {
   submissions: DecoratedPendingSubmission[];
-  /**
-   * Total count of pending submissions in the cache. Distinct from
-   * `submissions.length` when pagination is added; for now they're
-   * equal but the CLI uses this to distinguish "0 pending" from
-   * "cache lag" (issue #140 final bullet).
-   */
-  totalPending: number;
 }
 
 export async function listPendingSubmissionsAction(
@@ -232,7 +224,6 @@ export async function listPendingSubmissionsAction(
     authorDid: s.author_did,
     authorHandle: handlesByDid.get(s.author_did) ?? null,
     indexedAt: s.indexed_at,
-    indexedAtIso: new Date(s.indexed_at).toISOString(),
     name: s.name,
     house: s.house,
     creator: s.creator,
@@ -243,10 +234,7 @@ export async function listPendingSubmissionsAction(
     createdAt: s.created_at,
   }));
 
-  return {
-    submissions,
-    totalPending: submissions.length,
-  };
+  return { submissions };
 }
 
 /**

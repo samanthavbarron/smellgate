@@ -37,7 +37,6 @@ export async function POST(request: NextRequest) {
       status: result.status,
       message: result.message,
       record: result.record,
-      indexed: result.indexed,
       ...(result.idempotent ? { idempotent: true } : {}),
       // Backwards-compatible alias for the #128 shape. New clients
       // should read `record.notes` etc.

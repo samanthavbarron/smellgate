@@ -40,7 +40,6 @@ export async function POST(request: NextRequest) {
       success: true,
       uri: result.uri,
       record: result.record,
-      indexed: result.indexed,
     });
   } catch (err) {
     if (err instanceof ActionError) {
