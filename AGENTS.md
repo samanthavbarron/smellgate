@@ -4,14 +4,40 @@ Guidance for coding agents working on `smellgate`. Read [PLAN.md](PLAN.md) first
 
 ## Current state (2026-04-13)
 
-Phases 0–4 of the roadmap are all complete. The app is feature-complete end-to-end on localhost, not yet deployed. Remaining work is categorized as **production blockers** (3 items), **P1 polish** (7 items), and a longer tail of P2/P3 follow-ups tracked in GitHub issues.
+Phases 0–4 of the roadmap are all complete. The app is feature-complete end-to-end on localhost, not yet deployed. Phase 5 host is locked in — **Fly.io** (see [docs/deployment.md](docs/deployment.md)).
 
-- **Source of truth for what's left:** issue #86 (the META tracking issue). It groups the remaining work by priority and lists the exact steps needed to ship.
-- **Finding issues by priority:** `gh issue list --label P0-blocker` / `--label P1-critical` / `--label P2-polish` / `--label P3-nice-to-have`
-- **Finding production blockers:** `gh issue list --label "blocker:production"` (currently #1, #40, #85)
-- **Phase 5 (deployment)** is not yet scoped into issues. Do it when the P0s are clear — see the meta issue for the recommended order.
+A local multi-agent **bug-bash session** ran on 2026-04-13 and filed 33 issues (labels `bugbash-*`, range #109–141). **6 of those are ship-blockers** gating Phase 5 deploy via issue #99, and the previous session's hand-off recommendation is to resolve them in a single shared `writeGuards` PR. See [Next steps](#next-steps-2026-04-13-handoff) below for the exact order of operations.
 
-A fresh session resuming this work should: (1) read this file end-to-end, (2) read [docs/lexicons.md](docs/lexicons.md) for the data model, (3) read [docs/ui.md](docs/ui.md) for frontend conventions, (4) look at #86 to see what's next, (5) resume the same loop: pick an issue → spawn an implementation agent in a worktree → spawn a fresh adversarial reviewer → merge.
+- **Source of truth for what's left:** issue #86 (the META tracking issue) — now has a "Bug-bash findings (2026-04-13)" section layered on top of the original P0/P1/P2/P3 backlog.
+- **Ship-gate for Phase 5:** `gh issue list --repo samanthavbarron/smellgate --label bugbash-blocker` → 6 issues (#128, #129, #130, #135, #138, #141).
+- **Finding issues by priority:** `gh issue list --label P0-blocker` / `--label P1-critical` / `--label P2-polish` / `--label P3-nice-to-have` (original scheme) and `--label bugbash-blocker` / `--label bugbash-high` / `--label bugbash-medium` / `--label bugbash-dev-artifact` (new, bug-bash overlay).
+- **Finding production blockers:** `gh issue list --label "blocker:production"` (currently #1, #40, #85).
+- **Phase 5 (deployment)** is not yet scoped into issues. Gate is bugbash-blocker resolution; after that, follow [docs/deployment.md](docs/deployment.md).
+
+A fresh session resuming this work should: (1) read this file end-to-end **starting with "Next steps" below**, (2) read [docs/lexicons.md](docs/lexicons.md) for the data model, (3) read [docs/ui.md](docs/ui.md) for frontend conventions, (4) read [docs/deployment.md](docs/deployment.md) for Phase 5, (5) look at #86 and #99 to see what's next, (6) resume the same loop: pick an issue → spawn an implementation agent in a worktree → spawn a fresh adversarial reviewer → merge.
+
+## Next steps (2026-04-13 handoff)
+
+The previous session finished a local multi-agent bug-bash that filed 33 issues under `bugbash-*` labels. 6 are classified as ship-blockers and gate Phase 5 deploy via issue [#99](https://github.com/samanthavbarron/smellgate/issues/99). Before any deployment work, the recommended order of operations is:
+
+1. **Land the `writeGuards` PR.** One cohesive PR covering all 6 bugbash-blockers — they share a single root cause (the write layer is too trusting), so shipping them together keeps the defensive posture consistent and lets one adversarial reviewer verify them against one coherent threat model. The blockers are:
+   - **[#128](https://github.com/samanthavbarron/smellgate/issues/128)** — normalize `com.smellgate.perfume.notes` and `perfumeSubmission.notes` (trim, lowercase, dedupe, reject whitespace-only) in `lib/server/smellgate-actions.ts` and `lib/server/smellgate-curator-actions.ts`.
+   - **[#129](https://github.com/samanthavbarron/smellgate/issues/129), [#130](https://github.com/samanthavbarron/smellgate/issues/130)** — sanitize or reject raw HTML in free-text fields at the write layer: perfume/submission description, community description, review body, comment body.
+   - **[#141](https://github.com/samanthavbarron/smellgate/issues/141)** — audit `app/perfume/[uri]/page.tsx`, `app/profile/[did]/page.tsx`, `app/page.tsx` for HTML escaping; add a regression test that writes a `<script>alert(1)</script>` description body and asserts the rendered HTML escapes it.
+   - **[#135](https://github.com/samanthavbarron/smellgate/issues/135)** — add `author_did !== subject_author_did` guard on `voteOnDescriptionAction`, and add a "one latest vote per (author, subject)" guard at write time (not only read-time dedupe).
+   - **[#138](https://github.com/samanthavbarron/smellgate/issues/138)** — add an "already resolved" guard on `approveSubmissionAction` (check `getResolutionForSubmission` before creating another canonical perfume).
+
+   These could be split into separate PRs but a single PR is the recommendation; if CI run-time or review surface area pushes back, splitting along the three sub-themes (input normalization, HTML safety, duplicate/self-interaction guards) is the natural seam.
+
+2. **Then the "response shape" sweep PR.** Retires roughly half the `bugbash-high` backlog in one pass by having every write server action echo the persisted record plus a human-readable status string (not just `{success, uri}`) and surfacing that in the composer UI so users can see what was created. This pattern resolves [#111](https://github.com/samanthavbarron/smellgate/issues/111), [#119](https://github.com/samanthavbarron/smellgate/issues/119), [#124](https://github.com/samanthavbarron/smellgate/issues/124), [#126](https://github.com/samanthavbarron/smellgate/issues/126), [#131](https://github.com/samanthavbarron/smellgate/issues/131), [#137](https://github.com/samanthavbarron/smellgate/issues/137), [#140](https://github.com/samanthavbarron/smellgate/issues/140) with one change pattern.
+
+3. **Park the 4 `bugbash-dev-artifact` issues** ([#113](https://github.com/samanthavbarron/smellgate/issues/113), [#114](https://github.com/samanthavbarron/smellgate/issues/114), [#125](https://github.com/samanthavbarron/smellgate/issues/125), [#136](https://github.com/samanthavbarron/smellgate/issues/136)) until after the first preview deploy. All are downstream of the local Tap-less dev environment; the real Tap consumer on Fly should make them disappear. Revisit only if they reappear against the preview.
+
+4. **Proceed to Phase 5 deployment** ([#99](https://github.com/samanthavbarron/smellgate/issues/99)). Host is Fly.io ([docs/deployment.md](docs/deployment.md)). The ship-gate is step 1 above plus the original P0 blockers (#1, #40, #85).
+
+After step 1 lands, the 8 `bugbash-medium` issues ([#116](https://github.com/samanthavbarron/smellgate/issues/116), [#117](https://github.com/samanthavbarron/smellgate/issues/117), [#119](https://github.com/samanthavbarron/smellgate/issues/119), [#122](https://github.com/samanthavbarron/smellgate/issues/122), [#123](https://github.com/samanthavbarron/smellgate/issues/123), [#124](https://github.com/samanthavbarron/smellgate/issues/124), [#133](https://github.com/samanthavbarron/smellgate/issues/133), [#134](https://github.com/samanthavbarron/smellgate/issues/134)) can be knocked out opportunistically — they're polish, not ship-blockers.
+
+See issue [#86](https://github.com/samanthavbarron/smellgate/issues/86) for the full tracking view and [#99](https://github.com/samanthavbarron/smellgate/issues/99) for the Phase 5 umbrella with the bugbash-blocker ship-gate checkbox.
 
 ## Ground rules
 
@@ -172,20 +198,32 @@ Notifications, follows, lists, import from other perfume sites, moderation tools
 
 ## Backlog organization
 
-Open issues are labeled with exactly one priority tier:
+Open issues are labeled with exactly one **priority tier** from the original scheme:
 
 - **`P0-blocker`** — hard blocker for shipping. Always crossed with `blocker:production`. Currently 3: #1, #40, #85.
 - **`P1-critical`** — fix during the pre-ship polish pass. Data integrity, test hardening, contributor UX. Currently 7.
 - **`P2-polish`** — nice to have before shipping, not blocking. Currently ~15.
 - **`P3-nice-to-have`** — maybe someday. Currently 3.
 
+### Bug-bash overlay (2026-04-13)
+
+The 33 issues filed during the 2026-04-13 multi-agent bug-bash session (#109–141) are tagged with an additional **severity label** on top of their original `P0`/`P1`/etc. priority — so a bug-bash issue carries **two classifications**. Use `bugbash-*` to slice by the bug-bash severity, and `P*` to slice by original priority.
+
+- **`bugbash`** — any issue filed during the multi-agent bug-bash session. Umbrella label.
+- **`bugbash-blocker`** — ship-blocker. Must fix before Phase 5 deploy. Currently 6: #128, #129, #130, #135, #138, #141.
+- **`bugbash-high`** — real UX gap. Fix soon after deploy. Currently 13.
+- **`bugbash-medium`** — polish. Fix opportunistically. Currently 8.
+- **`bugbash-dev-artifact`** — only reproduces in the local (Tap-less) bug-bash dev environment, invisible in production. Currently 4 (#113, #114, #125, #136). Revisit only if they reappear against the preview.
+
+A fresh session picking up work should start with `gh issue list --repo samanthavbarron/smellgate --label bugbash-blocker` to find the 6 ship-blockers, then see [Next steps](#next-steps-2026-04-13-handoff) for the recommended PR grouping.
+
 Plus these cross-cut / organizational labels:
 
-- **`blocker:production`** — must be resolved before any real user can use the app. Currently P0s only.
-- **`meta`** — tracking / planning issue, not a unit of work. Currently just #86 (the pre-ship checklist).
+- **`blocker:production`** — must be resolved before any real user can use the app. Currently P0s + bugbash-blockers.
+- **`meta`** — tracking / planning issue, not a unit of work. Currently #86 (the pre-ship checklist) and #99 (Phase 5 umbrella).
 - **`phase-N`** (0-4) — historical attribution for what phase the issue was filed under.
 
-**Issue #86 is the master tracking board** for shipping. It lists every remaining item grouped by priority with a recommended ship order. Update it when you close anything significant.
+**Issue #86 is the master tracking board** for shipping (now with a "Bug-bash findings (2026-04-13)" section on top of the original backlog). **Issue #99 is the Phase 5 deployment umbrella** and gates on bugbash-blocker resolution. Update them when you close anything significant.
 
 ## Conventions for agents
 
@@ -232,3 +270,10 @@ The loopback OAuth flow only works at 127.0.0.1, so **actual login will fail** f
 Implementation and review agents sometimes take 5–17 minutes on substantive work and look "stalled" (output file at 131 bytes for minutes). The pattern has been: wait 5–10 minutes before declaring an agent dead. If you do spawn a replacement, the original often finishes anyway — that's fine for reviewers (two reviews is harmless) but wasteful for implementation agents (two PRs means one gets closed).
 
 If an agent reports something that contradicts what's actually on `main` (e.g. "AGENTS.md section X doesn't exist" when it clearly does), suspect stale context — the agent may be reading from a worktree checked out at an older commit. Verify the truth yourself before acting on the report.
+
+### Known operational quirks
+
+Two gotchas the previous session learned the hard way — worth internalizing before you start.
+
+- **Parent orchestrator cwd can get wedged.** If a worktree is removed while it's the current working directory of the orchestrator's shell, the `Bash` tool gets stuck in a dead cwd and every subsequent command fails. Once wedged, the only recovery is to route work through `Agent` subagent calls (each subagent gets a fresh shell) until you can start a new top-level session. Prevention: avoid `git worktree remove` on the tree you're sitting in; use absolute paths everywhere (`/workspaces/smellgate/...`) so your commands don't depend on `pwd`. If you inherit a wedged shell, delegate via subagents rather than fighting it.
+- **`gh` CLI default repo can mis-route.** Because this repo is a fork of `bluesky-social/statusphere-example-app`, `gh` will occasionally resolve the default repo to the upstream fork parent instead of `samanthavbarron/smellgate`. Always pass `--repo samanthavbarron/smellgate` explicitly on every `gh` call (`gh issue list --repo samanthavbarron/smellgate`, `gh pr create --repo samanthavbarron/smellgate ...`). If you see issues/PRs that don't exist here, that's the symptom.
