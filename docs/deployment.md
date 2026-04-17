@@ -25,7 +25,7 @@ Required in production:
 - `PUBLIC_URL` — hosted app URL (e.g. `https://smellgate.fly.dev`, or the custom domain once DNS is configured).
 - `PRIVATE_KEY` — ES256 JWK JSON string for OAuth client assertion signing. Generate locally with `pnpm gen-key`, then set as a Fly secret. Rotate only via redeploy; never set at runtime.
 - `DATABASE_PATH` — path to the SQLite file on a mounted Fly volume, e.g. `/data/smellgate.db`.
-- `SMELLGATE_CURATOR_DIDS` — comma-separated DIDs of curator accounts. Initially unset (or a placeholder) until the curator account from #1 exists.
+- `SMELLGATE_CURATOR_DIDS` — comma-separated DIDs of curator accounts. Production value: `did:plc:l6l3piyd3hywg76f2udorm53` (handle [`smellgate.bsky.social`](https://bsky.app/profile/smellgate.bsky.social)). A second curator DID for Sam will be appended once that account exists.
 - `TAP_URL` — Tap consumer's HTTP endpoint. Prefer the internal `*.flycast` address if Tap runs as its own Fly app.
 - `TAP_ADMIN_PASSWORD` — Tap webhook shared secret.
 
