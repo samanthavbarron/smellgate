@@ -67,7 +67,27 @@ async function waitForHealth(url: string, timeoutMs: number): Promise<void> {
   );
 }
 
+async function buildLex(): Promise<void> {
+  // `next dev` imports from `./lib/lexicons/app`, which is ts-lex output.
+  // The regular `pnpm dev` script runs through `pnpm migrate && next dev`;
+  // neither of those regenerates the lexicons, so a clean checkout
+  // without a prior `pnpm typecheck` / `pnpm build` would hit
+  // `Module not found: Can't resolve '../lexicons/app'`. Run it here so
+  // the orchestrator is self-sufficient.
+  await new Promise<void>((resolveP, reject) => {
+    const proc = spawn("pnpm", ["build:lex"], { stdio: "inherit" });
+    proc.on("exit", (code) => {
+      if (code === 0) resolveP();
+      else reject(new Error(`pnpm build:lex exited with ${code ?? "signal"}`));
+    });
+  });
+}
+
 async function main(): Promise<number> {
+  // ---- 0. Generate lexicon modules ----
+  console.log("[e2e-local] building lexicon modules...");
+  await buildLex();
+
   // ---- 1. Start PDS ----
   console.log("[e2e-local] starting ephemeral PDS + PLC...");
   const network = await TestNetworkNoAppView.create({});

@@ -82,6 +82,9 @@ jobs:
         run: pnpm exec playwright install --with-deps chromium
 
       - name: Run E2E (local)
+        # The orchestrator (`tests/e2e/run-local.ts`) runs
+        # `pnpm build:lex` itself before booting `next dev`, so no
+        # separate lexicon-build step is needed.
         run: |
           if [ -n "${{ inputs.grep }}" ]; then
             pnpm test:e2e:local --grep "${{ inputs.grep }}"
