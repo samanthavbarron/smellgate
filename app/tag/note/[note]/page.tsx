@@ -17,5 +17,16 @@ export default async function NoteTagPage({ params }: { params: Params }) {
   const note = decodeURIComponent(raw);
   const db = getDb();
   const perfumes = await getPerfumesByNote(db, note);
-  return <TagPage kindLabel="Note" value={note} perfumes={perfumes} />;
+  // Pass the matched note as `highlightNote` so each tile surfaces it
+  // in the visible 3-chip slice (#120). Without this, tiles pick the
+  // first 3 notes alphabetically and the clicked tag routinely
+  // doesn't appear on any tile.
+  return (
+    <TagPage
+      kindLabel="Note"
+      value={note}
+      perfumes={perfumes}
+      highlightNote={note}
+    />
+  );
 }

@@ -15,10 +15,19 @@ export function TagPage({
   kindLabel,
   value,
   perfumes,
+  highlightNote,
 }: {
   kindLabel: string;
   value: string;
   perfumes: PerfumeWithNotes[];
+  /**
+   * When set, each tile will pin this note first in its 3-chip note
+   * slice and style it more prominently (#120). Only set from the
+   * by-note tag page — house and creator tag pages have nothing to
+   * highlight on the tile, since the tile doesn't render house/creator
+   * as chips.
+   */
+  highlightNote?: string;
 }) {
   return (
     <div className="space-y-8">
@@ -45,7 +54,7 @@ export function TagPage({
         <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {perfumes.map((p) => (
             <li key={p.uri}>
-              <PerfumeTile perfume={p} />
+              <PerfumeTile perfume={p} highlight={highlightNote} />
             </li>
           ))}
         </ul>
