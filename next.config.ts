@@ -1,6 +1,56 @@
 import type { NextConfig } from "next";
 import path from "node:path";
 
+/**
+ * CSP (Content-Security-Policy) notes (#172)
+ * ------------------------------------------
+ * We ship CSP in **Report-Only** mode for v1. Enforcing CSP
+ * (non-report-only) requires integrating per-request nonces for
+ * Next.js's inline hydration bootstrap and Tailwind's inline styles —
+ * that's a follow-up once the reports from real traffic show what the
+ * baseline actually needs.
+ *
+ * Violation reports are POSTed to `/api/csp-report` (both the legacy
+ * `report-uri` directive and the newer Reporting-API `report-to` group
+ * named `csp-endpoint`, declared via the top-level `Report-To` header).
+ * Without a sink, Report-Only is nearly useless — browsers would log
+ * violations to devtools and nothing else. With the sink, we get the
+ * baseline in Fly logs that lets us safely tighten to enforce mode.
+ *
+ * The current policy:
+ *   - `default-src 'self'`
+ *   - `script-src 'self' 'unsafe-inline'` — required for Next.js's
+ *     RSC/hydration bootstrap until we add nonce support.
+ *   - `style-src 'self' 'unsafe-inline'` — required for Tailwind's
+ *     generated inline `<style>` tags.
+ *   - `img-src 'self' data:` — data URIs for inline chart/preview
+ *     snippets if we ever add them.
+ *   - `connect-src 'self' https://bsky.social https://plc.directory` —
+ *     OAuth flow talks to bsky.social and PLC lookup hits plc.directory.
+ *   - `frame-ancestors 'none'` — clickjacking guard (redundant with
+ *     the hard `X-Frame-Options: DENY` header but belt-and-suspenders).
+ */
+const cspReportOnly = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data:",
+  "connect-src 'self' https://bsky.social https://plc.directory",
+  "frame-ancestors 'none'",
+  "report-uri /api/csp-report",
+  "report-to csp-endpoint",
+].join("; ");
+
+// Reporting-API group declaration. Names the `csp-endpoint` group
+// referenced by the `report-to` CSP directive above. The 10886400s
+// (126 days) max_age mirrors the value in the Reporting-API spec
+// examples.
+const reportToHeader = JSON.stringify({
+  group: "csp-endpoint",
+  max_age: 10886400,
+  endpoints: [{ url: "/api/csp-report" }],
+});
+
 const nextConfig: NextConfig = {
   // Emit a minimal self-contained server bundle at `.next/standalone` so the
   // Docker `runner` stage only needs to copy that + `.next/static` + `public`
@@ -16,6 +66,32 @@ const nextConfig: NextConfig = {
   // in every environment (worktree, fresh clone, CI, Docker).
   outputFileTracingRoot: path.resolve(__dirname),
   serverExternalPackages: ["@atproto/tap", "thread-stream", "pino"],
+  // Drop the `x-powered-by: Next.js` header — minor info-disclosure leak (#172).
+  poweredByHeader: false,
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          {
+            key: "Strict-Transport-Security",
+            value: "max-age=63072000; includeSubDomains; preload",
+          },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "X-Frame-Options", value: "DENY" },
+          {
+            key: "Referrer-Policy",
+            value: "strict-origin-when-cross-origin",
+          },
+          {
+            key: "Content-Security-Policy-Report-Only",
+            value: cspReportOnly,
+          },
+          { key: "Report-To", value: reportToHeader },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;

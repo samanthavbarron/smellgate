@@ -162,7 +162,7 @@ export default async function PerfumeDetailPage({
             </>
           ) : (
             <Link
-              href="/oauth/login"
+              href="/#sign-in"
               className="rounded-md border border-amber-600 px-3 py-1.5 text-sm font-medium text-amber-700 transition-colors hover:bg-amber-50 dark:border-amber-500 dark:text-amber-400 dark:hover:bg-amber-950/40"
             >
               Sign in to add, review, or describe
