@@ -1,7 +1,7 @@
 import { getDb, AccountTable, StatusTable, DatabaseSchema } from ".";
 import { AtUri } from "@atproto/syntax";
 import { getHandle, isValidDidDoc } from "@atproto/common-web";
-import { getTap } from "@/lib/tap";
+import { resolveDid as resolveDidViaTap } from "@/lib/tap";
 import { Transaction } from "kysely";
 
 /**
@@ -62,16 +62,22 @@ export async function getAccountHandle(did: string): Promise<string | null> {
 
   // Next, try Tap's identity resolver. This is the in-process cached
   // resolver when Tap is attached; cheaper than a public lookup.
+  // `resolveDidViaTap` uses the pre-patch fetch (see lib/tap/index.ts
+  // for the Next.js 16 patch-fetch hang on `.internal` URLs) and has
+  // its own timeout, so it cannot stall the render path.
   try {
-    const didDoc = await getTap().resolveDid(did);
-    const handle = didDoc ? getHandle(didDoc) : undefined;
-    if (handle) {
-      await writeThroughAccountHandle(did, handle);
-      return handle;
+    const didDoc = await resolveDidViaTap(did);
+    if (didDoc && isValidDidDoc(didDoc)) {
+      const handle = getHandle(didDoc) ?? null;
+      if (handle) {
+        await writeThroughAccountHandle(did, handle);
+        return handle;
+      }
     }
   } catch {
-    // Tap may be unreachable in local dev (no sidecar) or may not have
-    // subscribed to this DID yet. Fall through to the public fallback.
+    // `resolveDidViaTap` swallows errors and returns null in production,
+    // but tests stub the inner method to throw to exercise the fall-
+    // through. Keep this catch so a thrown resolver can't 500 a render.
   }
 
   // Last resort: hit the public PLC directory directly. This is the gap
