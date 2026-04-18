@@ -38,6 +38,12 @@ export async function POST(request: NextRequest) {
       message: result.message,
       record: result.record,
       ...(result.idempotent ? { idempotent: true } : {}),
+      // Issue #127: surface catalog-dup candidates so the composer can
+      // warn the user. Omitted entirely when empty to keep the common
+      // response shape clean.
+      ...(result.potentialDuplicates
+        ? { potentialDuplicates: result.potentialDuplicates }
+        : {}),
       // Backwards-compatible alias for the #128 shape. New clients
       // should read `record.notes` etc.
       normalized: result.normalized,

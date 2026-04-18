@@ -883,6 +883,179 @@ describe("smellgate-queries", () => {
     });
   });
 
+  // #127: surface catalog-level dup candidates at submit time. The
+  // query is name + house both, case-insensitive equality (not LIKE).
+  describe("findCanonicalByNameHouse", () => {
+    it("returns an exact case-insensitive match on name + house", async () => {
+      const pUri = await seedPerfume(env.db, {
+        name: "Vespertine",
+        house: "Maison Vésper",
+        creator: "Jeanne Castel",
+        releaseYear: 1927,
+      });
+      const got = await env.q.findCanonicalByNameHouse(
+        env.db.getDb(),
+        "VESPERTINE",
+        "maison vésper",
+      );
+      expect(got.map((p) => p.uri)).toEqual([pUri]);
+      expect(got[0].name).toBe("Vespertine");
+      expect(got[0].house).toBe("Maison Vésper");
+    });
+
+    it("returns [] when house matches but name does not", async () => {
+      await seedPerfume(env.db, {
+        name: "Vespertine",
+        house: "Maison Vésper",
+      });
+      const got = await env.q.findCanonicalByNameHouse(
+        env.db.getDb(),
+        "Matinale",
+        "Maison Vésper",
+      );
+      expect(got).toEqual([]);
+    });
+
+    it("returns [] when name matches but house does not", async () => {
+      await seedPerfume(env.db, {
+        name: "Vespertine",
+        house: "Maison Vésper",
+      });
+      const got = await env.q.findCanonicalByNameHouse(
+        env.db.getDb(),
+        "Vespertine",
+        "Different House",
+      );
+      expect(got).toEqual([]);
+    });
+
+    it("returns [] on empty or whitespace-only name/house", async () => {
+      await seedPerfume(env.db, { name: "X", house: "Y" });
+      expect(
+        await env.q.findCanonicalByNameHouse(env.db.getDb(), "", "Y"),
+      ).toEqual([]);
+      expect(
+        await env.q.findCanonicalByNameHouse(env.db.getDb(), "   ", "Y"),
+      ).toEqual([]);
+      expect(
+        await env.q.findCanonicalByNameHouse(env.db.getDb(), "X", "  "),
+      ).toEqual([]);
+    });
+
+    it("trims both sides before comparing", async () => {
+      const pUri = await seedPerfume(env.db, {
+        name: "Vespertine",
+        house: "Maison Vésper",
+      });
+      const got = await env.q.findCanonicalByNameHouse(
+        env.db.getDb(),
+        "  Vespertine ",
+        "\tMaison Vésper  ",
+      );
+      expect(got.map((p) => p.uri)).toEqual([pUri]);
+    });
+
+    it("does not LIKE-wildcard: a literal % in the query matches only a stored %", async () => {
+      // Substring attempts must fail. "Vespertine EDP" is NOT the same
+      // catalog entry as "Vespertine" — the match is exact equality.
+      await seedPerfume(env.db, { name: "Vespertine EDP", house: "Maison" });
+      const got = await env.q.findCanonicalByNameHouse(
+        env.db.getDb(),
+        "Vespertine",
+        "Maison",
+      );
+      expect(got).toEqual([]);
+
+      // And conversely, a query with a literal % should not wildcard
+      // across the stored name — it only matches a stored value that
+      // literally contains the same sequence.
+      await seedPerfume(env.db, { name: "50% Off", house: "HouseA" });
+      const pctOk = await env.q.findCanonicalByNameHouse(
+        env.db.getDb(),
+        "50% Off",
+        "HouseA",
+      );
+      expect(pctOk.map((p) => p.name)).toEqual(["50% Off"]);
+      // A percent-only query should not match "50% Off".
+      const pctNope = await env.q.findCanonicalByNameHouse(
+        env.db.getDb(),
+        "%",
+        "HouseA",
+      );
+      expect(pctNope).toEqual([]);
+    });
+
+    it("caps the result set at the supplied limit (default 3)", async () => {
+      // Seed 4 canonical perfumes with the same (name, house). Rare
+      // in practice (would require curator approval of four variants)
+      // but the cap is part of the contract — verify it trims.
+      for (let i = 0; i < 4; i++) {
+        await seedPerfume(env.db, {
+          name: "Same Name",
+          house: "Same House",
+          creator: `Creator ${i}`,
+        });
+      }
+      const gotDefault = await env.q.findCanonicalByNameHouse(
+        env.db.getDb(),
+        "Same Name",
+        "Same House",
+      );
+      expect(gotDefault).toHaveLength(3);
+
+      const gotOne = await env.q.findCanonicalByNameHouse(
+        env.db.getDb(),
+        "Same Name",
+        "Same House",
+        1,
+      );
+      expect(gotOne).toHaveLength(1);
+    });
+
+    it("orders by indexed_at DESC with uri DESC as a total-order tiebreaker", async () => {
+      // Insert three rows with controlled indexed_at. seedPerfume uses
+      // a strictly increasing counter — so insertion order IS newest-
+      // last. Newest-first means the last-inserted row comes first.
+      const older = await seedPerfume(env.db, {
+        uri: "at://did:plc:c/app.smellgate.perfume/aaa",
+        name: "Tiebreak",
+        house: "Tiebreak House",
+      });
+      const middle = await seedPerfume(env.db, {
+        uri: "at://did:plc:c/app.smellgate.perfume/bbb",
+        name: "Tiebreak",
+        house: "Tiebreak House",
+      });
+      const newer = await seedPerfume(env.db, {
+        uri: "at://did:plc:c/app.smellgate.perfume/ccc",
+        name: "Tiebreak",
+        house: "Tiebreak House",
+      });
+
+      const got = await env.q.findCanonicalByNameHouse(
+        env.db.getDb(),
+        "Tiebreak",
+        "Tiebreak House",
+      );
+      expect(got.map((p) => p.uri)).toEqual([newer, middle, older]);
+    });
+
+    it("attaches notes on the returned rows", async () => {
+      await seedPerfume(env.db, {
+        name: "Vespertine",
+        house: "Maison Vésper",
+        notes: ["iris", "ambergris"],
+      });
+      const got = await env.q.findCanonicalByNameHouse(
+        env.db.getDb(),
+        "Vespertine",
+        "Maison Vésper",
+      );
+      expect(got).toHaveLength(1);
+      expect(got[0].notes.sort()).toEqual(["ambergris", "iris"]);
+    });
+  });
+
   describe("getReviewByUri", () => {
     it("returns the review row when it exists", async () => {
       const p = await seedPerfume(env.db, { name: "P", house: "H" });

@@ -34,11 +34,20 @@ function normalizeNotes(input: string): string[] {
   return out;
 }
 
+interface PotentialDuplicate {
+  uri: string;
+  name: string;
+  house: string;
+  creator?: string;
+  releaseYear?: number;
+}
+
 interface SubmitSuccess {
   uri: string;
   status: string;
   message: string;
   idempotent?: boolean;
+  potentialDuplicates?: PotentialDuplicate[];
 }
 
 export function PerfumeSubmissionComposer() {
@@ -104,6 +113,7 @@ export function PerfumeSubmissionComposer() {
         status?: string;
         message?: string;
         idempotent?: boolean;
+        potentialDuplicates?: PotentialDuplicate[];
       };
       if (!res.ok) {
         throw new Error(data.error ?? `Request failed (${res.status})`);
@@ -119,6 +129,7 @@ export function PerfumeSubmissionComposer() {
         message:
           data.message ?? "Your submission is queued for curator review.",
         idempotent: data.idempotent,
+        potentialDuplicates: data.potentialDuplicates,
       });
       setLoading(false);
     } catch (err) {
@@ -128,48 +139,90 @@ export function PerfumeSubmissionComposer() {
   }
 
   if (success) {
+    const dups = success.potentialDuplicates ?? [];
     return (
-      <div
-        role="status"
-        className="space-y-3 rounded-lg border border-amber-500 bg-amber-50 p-6 dark:border-amber-500 dark:bg-amber-950"
-      >
-        <h2 className="text-lg font-semibold tracking-tight text-amber-900 dark:text-amber-100">
-          {success.idempotent
-            ? "You already submitted this perfume."
-            : "Submission received."}
-        </h2>
-        <p className="text-sm text-amber-800 dark:text-amber-200">
-          {success.message}
-        </p>
-        {success.uri && (
-          <div className="break-all font-mono text-xs text-amber-700 dark:text-amber-300">
-            {success.uri}
+      <div className="space-y-3">
+        {dups.length > 0 && (
+          // Issue #127: catalog duplicate-detection UX. Rendered above
+          // the success banner so the submitter sees the warning
+          // before the "submission received" confirmation scrolls it
+          // off. Amber-accent is reused from the banner for visual
+          // consistency — the page is still on the happy path (the
+          // submission was accepted); this is an advisory flag, not an
+          // error.
+          <div
+            role="alert"
+            className="space-y-2 rounded-lg border border-amber-400 bg-amber-50 p-4 dark:border-amber-600 dark:bg-amber-950"
+          >
+            <h3 className="text-sm font-semibold tracking-tight text-amber-900 dark:text-amber-100">
+              This may already be in the catalog — is this a true duplicate?
+            </h3>
+            <ul className="space-y-1 text-sm text-amber-800 dark:text-amber-200">
+              {dups.map((d) => (
+                <li key={d.uri} className="break-words">
+                  <Link
+                    href={`/perfume/${encodeURIComponent(d.uri)}`}
+                    className="font-medium underline decoration-amber-600/60 underline-offset-2 hover:decoration-amber-700 dark:decoration-amber-400/60 dark:hover:decoration-amber-300"
+                  >
+                    {d.name}
+                  </Link>
+                  <span className="text-amber-700 dark:text-amber-300">
+                    {" "}
+                    ({d.house}
+                    {d.creator ? `, ${d.creator}` : ""}
+                    {d.releaseYear != null ? `, ${d.releaseYear}` : ""})
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <p className="text-xs text-amber-700 dark:text-amber-300">
+              A curator will review your submission and mark it as a
+              duplicate if needed.
+            </p>
           </div>
         )}
-        <div className="flex flex-wrap gap-2 pt-2">
-          <Link
-            href="/profile/me/submissions"
-            className="rounded-md border border-amber-600 bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-700 dark:border-amber-500 dark:bg-amber-500 dark:hover:bg-amber-600"
-          >
-            View my submissions
-          </Link>
-          <button
-            type="button"
-            onClick={() => {
-              setSuccess(null);
-              setName("");
-              setHouse("");
-              setCreator("");
-              setReleaseYear("");
-              setNotesText("");
-              setDescription("");
-              setRationale("");
-              setError(null);
-            }}
-            className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:border-amber-600 hover:text-amber-700 dark:border-zinc-700 dark:text-zinc-300 dark:hover:border-amber-500 dark:hover:text-amber-400"
-          >
-            Submit another
-          </button>
+        <div
+          role="status"
+          className="space-y-3 rounded-lg border border-amber-500 bg-amber-50 p-6 dark:border-amber-500 dark:bg-amber-950"
+        >
+          <h2 className="text-lg font-semibold tracking-tight text-amber-900 dark:text-amber-100">
+            {success.idempotent
+              ? "You already submitted this perfume."
+              : "Submission received."}
+          </h2>
+          <p className="text-sm text-amber-800 dark:text-amber-200">
+            {success.message}
+          </p>
+          {success.uri && (
+            <div className="break-all font-mono text-xs text-amber-700 dark:text-amber-300">
+              {success.uri}
+            </div>
+          )}
+          <div className="flex flex-wrap gap-2 pt-2">
+            <Link
+              href="/profile/me/submissions"
+              className="rounded-md border border-amber-600 bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-700 dark:border-amber-500 dark:bg-amber-500 dark:hover:bg-amber-600"
+            >
+              View my submissions
+            </Link>
+            <button
+              type="button"
+              onClick={() => {
+                setSuccess(null);
+                setName("");
+                setHouse("");
+                setCreator("");
+                setReleaseYear("");
+                setNotesText("");
+                setDescription("");
+                setRationale("");
+                setError(null);
+              }}
+              className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:border-amber-600 hover:text-amber-700 dark:border-zinc-700 dark:text-zinc-300 dark:hover:border-amber-500 dark:hover:text-amber-400"
+            >
+              Submit another
+            </button>
+          </div>
         </div>
       </div>
     );
