@@ -35,9 +35,9 @@ describe("agent-as HTML parsers", () => {
     expect(hits[1].inner).toContain("Second review body");
   });
 
-  it("snippet strips tags and truncates", () => {
+  it("snippet strips tags, truncates, and collapses space-before-punctuation", () => {
     const inner = "<p>Hello <strong>world</strong>.</p>";
-    expect(__parsers.snippet(inner)).toBe("Hello world .");
+    expect(__parsers.snippet(inner)).toBe("Hello world.");
     const long = "a".repeat(200);
     expect(__parsers.snippet(`<p>${long}</p>`, 50)).toMatch(/…$/);
   });

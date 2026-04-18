@@ -55,6 +55,7 @@
 
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import * as http from "node:http";
 
 const APP_URL = process.env.SMELLGATE_DEV_APP_URL ?? "http://127.0.0.1:3000";
@@ -418,17 +419,48 @@ async function authedFetch(
   path: string,
   opts: { method?: string; body?: unknown } = {},
 ): Promise<{ status: number; body: string }> {
-  const res = await rawRequest(`${APP_URL}${path}`, {
-    method: opts.method ?? "GET",
-    headers: {
-      accept: "application/json,text/html",
-      "content-type": "application/json",
-      cookie: session.cookie,
-      "user-agent": "smellgate-agent-cli",
-    },
-    body: opts.body == null ? undefined : JSON.stringify(opts.body),
-  });
-  return { status: res.status, body: res.body };
+  const method = opts.method ?? "GET";
+  // Follow up to 5 same-origin redirects on GET. Without this, `shelf
+  // list` fetches `/profile/me/` which 308-redirects to
+  // `/profile/<did>/` and the summarizer parses the redirect stub
+  // instead of the real profile (#117 / #109). We only follow on GET
+  // because a POST → GET redirect chain can silently change the
+  // semantics of write actions. All CLI read calls are to first-party
+  // routes on `APP_URL`, so following is safe.
+  let currentPath = path;
+  for (let hops = 0; hops < 5; hops++) {
+    const res = await rawRequest(`${APP_URL}${currentPath}`, {
+      method,
+      headers: {
+        accept: "application/json,text/html",
+        "content-type": "application/json",
+        cookie: session.cookie,
+        "user-agent": "smellgate-agent-cli",
+      },
+      body: opts.body == null ? undefined : JSON.stringify(opts.body),
+    });
+    const isRedirect =
+      res.status >= 300 && res.status < 400 && res.headers["location"];
+    if (method !== "GET" || !isRedirect) {
+      return { status: res.status, body: res.body };
+    }
+    const loc = res.headers["location"];
+    if (typeof loc !== "string") {
+      return { status: res.status, body: res.body };
+    }
+    // Preserve only the path + search; cross-origin redirects aren't
+    // expected from first-party routes and would drop the cookie.
+    try {
+      const abs = new URL(loc, `${APP_URL}${currentPath}`);
+      if (abs.origin !== new URL(APP_URL).origin) {
+        return { status: res.status, body: res.body };
+      }
+      currentPath = abs.pathname + abs.search;
+    } catch {
+      return { status: res.status, body: res.body };
+    }
+  }
+  throw new Error(`authedFetch: too many redirects following ${path}`);
 }
 
 function expectJson(
@@ -568,10 +600,13 @@ function decodeHtml(s: string): string {
 }
 
 // Strip tags and collapse whitespace to produce a plain-text snippet of
-// a card's `body`. Truncate to 120 chars.
+// a card's `body`. Truncate to 120 chars. We also collapse
+// `<space><punct>` into `<punct>` so the tag-stripped output reads
+// like normal prose (e.g. `<p>hi</p>.` would otherwise become `hi .`).
 function snippet(inner: string, max = 120): string {
   const text = decodeHtml(inner.replace(/<[^>]*>/g, " "))
     .replace(/\s+/g, " ")
+    .replace(/ ([.,!?;:])/g, "$1")
     .trim();
   return text.length > max ? `${text.slice(0, max).trimEnd()}…` : text;
 }
@@ -721,6 +756,11 @@ async function runAction(
         return;
       }
       if (sub === "list") {
+        // `/profile/me/` 308-redirects to `/profile/<did>/` (#109).
+        // `authedFetch` follows same-origin redirects on GET, so we
+        // end up parsing the real profile body rather than the
+        // redirect stub that used to make this summarizer return
+        // `{"items":[]}` regardless of shelf state.
         const res = await authedFetch(session, "/profile/me/");
         if (res.status >= 400)
           throw new Error(`shelf list: HTTP ${res.status}`);
@@ -896,11 +936,19 @@ async function main(): Promise<void> {
 // Only run when invoked directly (e.g. `pnpm agent:as ...`). Tests
 // import this module for `__parsers` and must NOT trigger the OAuth
 // flow.
+//
+// We use Node's `pathToFileURL` instead of constructing `file://` by
+// hand because the former handles trailing-slash normalization, URL
+// encoding, and the leading-slash-on-Windows quirk — all of which can
+// otherwise silently break the equality check and turn the CLI into a
+// no-op. A smoke test in `tests/integration/agent-as-cli-smoke.test.ts`
+// guards against regressions of that "exits 0 with no output"
+// failure mode.
 function isEntryPoint(): boolean {
   const entry = process.argv[1];
   if (!entry) return false;
   try {
-    return import.meta.url === new URL(`file://${entry}`).href;
+    return import.meta.url === pathToFileURL(entry).href;
   } catch {
     return false;
   }
