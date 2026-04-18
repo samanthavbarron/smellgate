@@ -22,7 +22,7 @@ As a bonus, every Fly app gets a public HTTPS URL at `https://<app>.fly.dev` for
 
 Required in production:
 
-- `PUBLIC_URL` — hosted app URL (e.g. `https://smellgate.fly.dev`, or the custom domain once DNS is configured).
+- `PUBLIC_URL` — hosted app URL. Current production value is `https://smellgate.app` (custom domain, A/AAAA to Fly, Let's Encrypt via `fly certs add`). The app is also reachable at `https://smellgate.fly.dev`, but the OAuth client_id is keyed off `PUBLIC_URL`, so visiting via `.fly.dev` still authorizes as the `.app` client.
 - `PRIVATE_KEY` — ES256 JWK JSON string for OAuth client assertion signing. Generate locally with `pnpm gen-key`, then set as a Fly secret. Rotate only via redeploy; never set at runtime.
 - `SMELLGATE_CURATOR_DIDS` — comma-separated DIDs of curator accounts. Production value: `did:plc:sna3qx44beg2mb5fao44gsxh` (handle [`samantha.wiki`](https://bsky.app/profile/samantha.wiki)) — stopgap while `@smellgate.bsky.social` credentials are being recovered; will swap back once that account is reachable. A second curator DID for Sam will be appended once that account exists.
 - `TAP_URL` — internal URL of the `smellgate-tap` Fly app, used by `lib/db/queries.ts` `getAccountHandle` to resolve DIDs via `getTap().resolveDid(...)`. Production value is `http://smellgate-tap.flycast:2480` so traffic stays inside Fly's private network. See "Tap consumer hosting" below.
@@ -47,7 +47,7 @@ Optional:
 ## DNS
 
 - `_lexicon.smellgate.app` TXT record, value `did=did:plc:l6l3piyd3hywg76f2udorm53`, was set and confirmed live (2026-04-17) via DNS-over-HTTPS. This declares the authority for `app.smellgate.*` lexicons. See [docs/lexicons.md](./lexicons.md) under "Lexicon authority publication".
-- The first production deploy uses `smellgate.fly.dev` as `PUBLIC_URL`. Pointing a custom domain (e.g. `smellgate.app`) at Fly is a follow-up — once that's done, update `PUBLIC_URL` to the custom domain and redeploy. OAuth client metadata is keyed off `PUBLIC_URL`, so changing it mid-session will invalidate existing OAuth sessions until clients refresh.
+- Custom domain `smellgate.app` is live. Apex-only (no `www`). DNS: `A smellgate.app → 66.241.124.85`, `AAAA smellgate.app → 2a09:8280:1::100:6bb0:0`. Let's Encrypt cert provisioned via `fly certs add smellgate.app --app smellgate`. The `.fly.dev` hostname remains as a fallback. **Rotating `PUBLIC_URL` invalidates all existing OAuth sessions** — the client_id changes and issued tokens belong to the old client. Plan user-visible downtime before flipping it again.
 
 ## Deploy workflow
 
@@ -76,7 +76,7 @@ flyctl volumes create smellgate_data --size 1 --region iad --app smellgate
 
 # 3. Secrets the app needs at runtime. PRIVATE_KEY comes from `pnpm gen-key`.
 flyctl secrets set --app smellgate \
-  PUBLIC_URL=https://smellgate.fly.dev \
+  PUBLIC_URL=https://smellgate.app \
   PRIVATE_KEY="$(pnpm -s gen-key)" \
   SMELLGATE_CURATOR_DIDS=did:plc:l6l3piyd3hywg76f2udorm53
 # Tap secrets (TAP_URL, TAP_ADMIN_PASSWORD) can wait until issue #148.
@@ -144,7 +144,7 @@ TAP_ADMIN_PASSWORD=$(openssl rand -hex 32)
 # 4. Set secrets on smellgate-tap (where to POST events, and the shared
 #    secret to sign those POSTs with).
 flyctl secrets set --app smellgate-tap \
-  TAP_WEBHOOK_URL=https://smellgate.fly.dev/api/webhook \
+  TAP_WEBHOOK_URL=https://smellgate.app/api/webhook \
   TAP_ADMIN_PASSWORD="$TAP_ADMIN_PASSWORD"
 
 # 5. Set matching secrets on the main smellgate app so (a) its
@@ -221,7 +221,7 @@ After the Tap app is deployed and the curator DID has been added (step 7 above):
 
 1. `flyctl logs --app smellgate-tap` — watch for `webhook: delivered` lines once events start arriving. Backfill on the curator repo takes a few seconds; subsequent live events appear within firehose latency (~sub-second).
 2. `flyctl logs --app smellgate` — watch `/api/webhook` POST 200s. If you see 401s, the shared secret is mismatched between apps. If you see 500s, the dispatcher is throwing (turn on `SMELLGATE_TAP_DEBUG=1` on the main app temporarily).
-3. From any Bluesky account, write a `app.smellgate.description` record for an existing canonical perfume (via `pnpm agent:as` locally or the UI composer once Tap is live in front of the production app). Within seconds, `curl https://smellgate.fly.dev/perfume/<at-uri>` should render the new description.
+3. From any Bluesky account, write a `app.smellgate.description` record for an existing canonical perfume (via `pnpm agent:as` locally or the UI composer once Tap is live in front of the production app). Within seconds, `curl https://smellgate.app/perfume/<at-uri>` should render the new description.
 
 If step 3 fails, the drop-reason is almost always one of: (a) record didn't validate against the generated lexicon (check with `pnpm build:lex && node -e ...`), (b) the `SMELLGATE_CURATOR_DIDS` list on the main app doesn't include the author DID for curator-only record types, (c) the `TAP_ADMIN_PASSWORD` values on the two apps disagree. Turn on `SMELLGATE_TAP_DEBUG=1` via `flyctl secrets set` on the main app to surface drop reasons.
 
