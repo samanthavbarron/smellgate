@@ -37,10 +37,30 @@ export function SiteHeader({ signedIn, handle, isCurator }: SiteHeaderProps) {
         <nav className="flex items-center gap-5 text-sm">
           <Link
             href="/"
-            className="text-zinc-600 hover:text-amber-700 dark:text-zinc-400 dark:hover:text-amber-400"
+            className="hidden text-zinc-600 hover:text-amber-700 sm:inline dark:text-zinc-400 dark:hover:text-amber-400"
           >
             Home
           </Link>
+          <Link
+            href="/perfumes"
+            className="text-zinc-600 hover:text-amber-700 dark:text-zinc-400 dark:hover:text-amber-400"
+          >
+            Browse
+          </Link>
+          <Link
+            href="/search"
+            className="text-zinc-600 hover:text-amber-700 dark:text-zinc-400 dark:hover:text-amber-400"
+          >
+            Search
+          </Link>
+          {signedIn && (
+            <Link
+              href="/submit"
+              className="hidden text-zinc-600 hover:text-amber-700 sm:inline dark:text-zinc-400 dark:hover:text-amber-400"
+            >
+              Submit
+            </Link>
+          )}
           {signedIn && (
             <Link
               href="/profile/me"
@@ -52,7 +72,7 @@ export function SiteHeader({ signedIn, handle, isCurator }: SiteHeaderProps) {
           {signedIn && isCurator && (
             <Link
               href="/curator"
-              className="text-zinc-600 hover:text-amber-700 dark:text-zinc-400 dark:hover:text-amber-400"
+              className="hidden text-zinc-600 hover:text-amber-700 sm:inline dark:text-zinc-400 dark:hover:text-amber-400"
             >
               Curator
             </Link>
