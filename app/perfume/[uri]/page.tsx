@@ -20,9 +20,22 @@
  * Vote buttons on community descriptions are real `<VoteButtons>`
  * (PR #80) for signed-in users; signed-out viewers see a static score
  * gutter.
+ *
+ * Not-found handling (#175): when the perfume is missing we render
+ * the "not found" UI *inline* below rather than calling `notFound()`.
+ * Reason: under Next.js 16.1 the root layout's async
+ * `await getSession()` commits the html/body shell before `page.tsx`
+ * runs, so calling `notFound()` here fires mid-stream and Next.js 16
+ * bails to `<html id="__next_error__">` with an empty `<body>`. The
+ * RSC payload still carries the scoped `not-found.tsx` tree, so
+ * clients with JS hydrate fine, but SSR-only viewers (curl, crawlers,
+ * pre-hydrate flash) see nothing. Rendering inline sidesteps the
+ * mid-stream bailout entirely — the trade-off is an HTTP 200 status
+ * on the soft-miss page; a real 404 is still returned for
+ * unmatched routes via the global `app/not-found.tsx`. See the PR
+ * for issue #175 for the full diagnosis.
  */
 import Link from "next/link";
-import { notFound } from "next/navigation";
 import { getDb } from "@/lib/db";
 import {
   getPerfumeByUri,
@@ -38,6 +51,7 @@ import type {
 import { getSession } from "@/lib/auth/session";
 import { getAccountHandle } from "@/lib/db/queries";
 import { VoteButtons } from "@/components/forms/VoteButtons";
+import PerfumeNotFound from "./not-found";
 
 type Params = Promise<{ uri: string }>;
 
@@ -58,8 +72,11 @@ export default async function PerfumeDetailPage({
     getPerfumeByUri(db, uri),
   ]);
   if (!perfume) {
-    // Rendered by the scoped `not-found.tsx` sibling (#123).
-    notFound();
+    // Render the "not found" UI inline rather than `notFound()`. See
+    // the file header for the Next.js 16 mid-stream bailout that
+    // forces this shape. Same component the adjacent `not-found.tsx`
+    // exports, so there's a single source of truth for the copy.
+    return <PerfumeNotFound />;
   }
 
   const [reviews, descriptions] = await Promise.all([

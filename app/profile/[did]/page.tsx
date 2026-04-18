@@ -29,12 +29,14 @@
  * point — not preemptively."
  *
  * Not-found behavior: if all three lists are empty AND the identity
- * resolver returns no handle, we call `notFound()`. Any signal of
- * existence (a handle, or any cached record) is enough to render the
- * page — an empty but real profile is valid.
+ * resolver returns no handle, we render the adjacent
+ * `ProfileNotFound` component inline (#176). Same mid-stream bailout
+ * reasoning as `app/perfume/[uri]/page.tsx` (#175) — calling
+ * `notFound()` after the root layout's `await getSession()` commits
+ * the html/body shell triggers an `<html id="__next_error__">` empty
+ * body in Next.js 16.
  */
 import Link from "next/link";
-import { notFound } from "next/navigation";
 import { getDb } from "@/lib/db";
 import {
   getUserShelf,
@@ -47,6 +49,7 @@ import type { SmellgateReviewTable } from "@/lib/db";
 import { getAccountHandle } from "@/lib/db/queries";
 import { getSession } from "@/lib/auth/session";
 import { PerfumeTile } from "@/components/PerfumeTile";
+import ProfileNotFound from "./not-found";
 
 type Params = Promise<{ did: string }>;
 
@@ -80,7 +83,10 @@ export default async function ProfilePage({ params }: { params: Params }) {
     reviews.length === 0 &&
     descriptions.length === 0
   ) {
-    notFound();
+    // Render the "not found" UI inline rather than `notFound()`. See
+    // #175 / the `app/perfume/[uri]/page.tsx` header for the Next.js
+    // 16 mid-stream bailout this works around.
+    return <ProfileNotFound />;
   }
 
   // For reviews and descriptions we need the perfume name / house

@@ -142,7 +142,7 @@ describe("profile PLC fallback (#109)", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   }, 30_000);
 
-  it("still 404s a foreign DID when Tap is empty AND the PLC directory has no record", async () => {
+  it("still renders the scoped 'Profile not found' UI for a foreign DID when Tap is empty AND the PLC directory has no record", async () => {
     const fetchSpy = vi.fn(
       async () => new Response("not found", { status: 404 }),
     );
@@ -153,13 +153,17 @@ describe("profile PLC fallback (#109)", () => {
       params: Promise<{ did: string }>;
     }) => Promise<React.ReactElement>;
 
-    // `notFound()` throws a `NEXT_NOT_FOUND` error — this is the
-    // Next.js runtime convention for server components that call it.
-    await expect(
-      PageComponent({
-        params: Promise.resolve({ did: encodeURIComponent(FOREIGN_DID) }),
-      }),
-    ).rejects.toThrow(/NEXT_HTTP_ERROR_FALLBACK|NEXT_NOT_FOUND/);
+    // #176: the page renders the adjacent `ProfileNotFound` component
+    // inline rather than calling `notFound()`. See the page header
+    // for the Next.js 16 mid-stream-bailout rationale. The rendered
+    // HTML must carry the scoped copy, not throw.
+    const element = await PageComponent({
+      params: Promise.resolve({ did: encodeURIComponent(FOREIGN_DID) }),
+    });
+    const html = renderToString(element);
+    expect(html).toContain("Profile not found");
+    expect(html).toContain('href="/"');
+    expect(html).toContain("Back to home");
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   }, 30_000);
 });
