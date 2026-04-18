@@ -333,8 +333,10 @@ export async function getPerfumesByHouse(
 }
 
 /**
- * Case-insensitive substring search over `smellgate_perfume.name` and
- * `smellgate_perfume.house` (Phase 4.F, issue #71).
+ * Case-insensitive substring search over `smellgate_perfume.name`,
+ * `smellgate_perfume.house`, `smellgate_perfume.creator`, and the
+ * joined `smellgate_perfume_note.note` values (Phase 4.F, issue #71;
+ * extended by issue #121 to cover creator + notes).
  *
  * Implementation notes:
  *
@@ -345,10 +347,24 @@ export async function getPerfumesByHouse(
  *   into SQL. `%` and `_` inside the user input are escaped with a
  *   literal backslash so they behave as plain characters, and the
  *   `LIKE ... ESCAPE '\\'` clause tells SQLite about our escape char.
- * - LIKE `%query%` can't use the `name` / `house` btree indexes — this
- *   is a table scan. Fine for the current small cache; won't scale
- *   past ~10K perfumes without FTS. Deliberately not implementing FTS
- *   in this phase.
+ *   The same escaped pattern is applied uniformly across all four
+ *   columns (name, house, creator, note), so no field can bypass the
+ *   escape.
+ * - `creator` is nullable in the schema; `LOWER(NULL) LIKE ...` is
+ *   NULL which is falsy, so NULL creator rows naturally don't match.
+ * - Note-matching uses an `EXISTS` correlated subquery against
+ *   `smellgate_perfume_note`. This pattern naturally deduplicates:
+ *   a perfume with multiple matching notes still produces a single
+ *   outer row. A perfume that matches via both its name and one of
+ *   its notes also produces a single outer row, because we're still
+ *   selecting from `smellgate_perfume` (the EXISTS just contributes
+ *   to the WHERE predicate; it doesn't multiply rows the way a JOIN
+ *   would).
+ * - LIKE `%query%` can't use the `name` / `house` / `creator` btree
+ *   indexes — this is a table scan, plus an indexed lookup into
+ *   `smellgate_perfume_note` per row. Fine for the current small
+ *   cache; won't scale past ~10K perfumes without FTS. Deliberately
+ *   not implementing FTS in this phase.
  * - Empty / whitespace-only queries short-circuit to `[]` so we never
  *   accidentally LIKE `%%` and return the whole catalog.
  * - Ordering is `name ASC` for deterministic output; no relevance
@@ -376,7 +392,15 @@ export async function searchPerfumes(
     .selectFrom("smellgate_perfume")
     .selectAll()
     .where(
-      sql<boolean>`lower(name) like ${pattern} escape '\\' or lower(house) like ${pattern} escape '\\'`,
+      (eb) =>
+        sql<boolean>`lower(${eb.ref("smellgate_perfume.name")}) like ${pattern} escape '\\'
+          or lower(${eb.ref("smellgate_perfume.house")}) like ${pattern} escape '\\'
+          or lower(${eb.ref("smellgate_perfume.creator")}) like ${pattern} escape '\\'
+          or exists (
+            select 1 from smellgate_perfume_note n
+            where n.perfume_uri = ${eb.ref("smellgate_perfume.uri")}
+              and lower(n.note) like ${pattern} escape '\\'
+          )`,
     )
     .orderBy("name", "asc")
     .limit(limit)

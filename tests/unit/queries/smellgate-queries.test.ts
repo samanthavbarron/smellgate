@@ -794,6 +794,93 @@ describe("smellgate-queries", () => {
       expect(Array.isArray(got[0].notes)).toBe(true);
       expect(got[0].notes.sort()).toEqual(["ambergris", "iris", "vetiver"]);
     });
+
+    // #121: extend search to also match creator and notes.
+    it("substring-matches the creator case-insensitively", async () => {
+      await seedPerfume(env.db, {
+        name: "Terre d'Hermès",
+        house: "Hermès",
+        creator: "Jean-Claude Ellena",
+      });
+      await seedPerfume(env.db, {
+        name: "Chanel No. 5",
+        house: "Chanel",
+        creator: "Ernest Beaux",
+      });
+      const got = await env.q.searchPerfumes(env.db.getDb(), "ellena");
+      expect(got.map((p) => p.name)).toEqual(["Terre d'Hermès"]);
+    });
+
+    it("does not match on a NULL creator", async () => {
+      // Guard against a naive `LIKE` on NULL accidentally returning
+      // every row; LOWER(NULL) LIKE … is NULL (falsy) but worth
+      // pinning down.
+      await seedPerfume(env.db, {
+        name: "Anonymous",
+        house: "H",
+        creator: null,
+      });
+      const got = await env.q.searchPerfumes(env.db.getDb(), "ellena");
+      expect(got).toEqual([]);
+    });
+
+    it("substring-matches a note value case-insensitively", async () => {
+      await seedPerfume(env.db, {
+        name: "Vetiver Fatal",
+        house: "Atelier Cologne",
+        notes: ["vetiver", "grapefruit"],
+      });
+      await seedPerfume(env.db, {
+        name: "Sycomore",
+        house: "Chanel",
+        notes: ["VETIVER", "cypress"],
+      });
+      await seedPerfume(env.db, {
+        name: "Unrelated",
+        house: "H",
+        notes: ["rose"],
+      });
+      const got = await env.q.searchPerfumes(env.db.getDb(), "VETIVER");
+      // Both perfumes match via their note; Vetiver Fatal also matches
+      // on name, but should still appear exactly once.
+      expect(got.map((p) => p.name)).toEqual(["Sycomore", "Vetiver Fatal"]);
+    });
+
+    it("deduplicates: a perfume matching via name and via a note appears once", async () => {
+      await seedPerfume(env.db, {
+        name: "Rose Absolue",
+        house: "H",
+        notes: ["rose", "rosewood"],
+      });
+      const got = await env.q.searchPerfumes(env.db.getDb(), "rose");
+      expect(got).toHaveLength(1);
+      expect(got[0].name).toBe("Rose Absolue");
+      // Notes come back fully attached (not truncated to the match).
+      expect(got[0].notes.sort()).toEqual(["rose", "rosewood"]);
+    });
+
+    it("preserves LIKE-escape safety across the new fields too", async () => {
+      // A `%` or `_` in the user query must not wildcard — including
+      // when the potential match is on creator or notes.
+      await seedPerfume(env.db, {
+        name: "Baseline",
+        house: "H",
+        creator: "100%_Artisan",
+        notes: ["100%_note"],
+      });
+      await seedPerfume(env.db, {
+        name: "Decoy",
+        house: "H",
+        creator: "100XArtisan",
+        notes: ["100Xnote"],
+      });
+
+      const pct = await env.q.searchPerfumes(env.db.getDb(), "100%");
+      expect(pct.map((p) => p.name)).toEqual(["Baseline"]);
+
+      const underscore = await env.q.searchPerfumes(env.db.getDb(), "%_");
+      expect(underscore.map((p) => p.name)).toEqual(["Baseline"]);
+    });
   });
 
   describe("getReviewByUri", () => {

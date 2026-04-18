@@ -41,7 +41,7 @@ export default async function SearchPage({
             Search
           </h1>
           <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-            Search by perfume name or house.
+            Search by perfume name, house, creator, or note.
           </p>
         </header>
         <div className="mx-auto max-w-xl">
@@ -75,8 +75,23 @@ export default async function SearchPage({
       {perfumes.length === 0 ? (
         <div className="rounded-lg border border-dashed border-zinc-300 bg-white p-6 text-sm text-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400">
           No perfumes match &ldquo;{query}&rdquo;. Try a shorter substring,
-          or a different spelling — this is a plain substring search over
-          names and houses, no fuzzy matching.
+          or a different spelling — this is a plain substring search
+          matching any of: name, house, creator, or note. No fuzzy
+          matching. You can also browse directly via{" "}
+          <a
+            href={`/tag/creator/${encodeURIComponent(query)}`}
+            className="text-amber-700 underline hover:text-amber-800 dark:text-amber-400 dark:hover:text-amber-300"
+          >
+            /tag/creator/{query}
+          </a>{" "}
+          or{" "}
+          <a
+            href={`/tag/note/${encodeURIComponent(query)}`}
+            className="text-amber-700 underline hover:text-amber-800 dark:text-amber-400 dark:hover:text-amber-300"
+          >
+            /tag/note/{query}
+          </a>{" "}
+          if you know the exact value.
         </div>
       ) : (
         <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
