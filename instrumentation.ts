@@ -41,6 +41,31 @@ export async function register() {
   // runtime, where better-sqlite3 isn't available.
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
 
+  // Production-only: require TAP_ADMIN_PASSWORD to be a non-empty string.
+  //
+  // The webhook route's legacy `if (TAP_ADMIN_PASSWORD)` check treats an
+  // empty string as "auth disabled", which would make `/api/webhook`
+  // publicly unauthenticated. An unset secret OR `flyctl secrets set
+  // TAP_ADMIN_PASSWORD=""` would both silently open this hole. Hard-fail
+  // on boot instead so the mis-config is caught at deploy time, not
+  // after events start flowing through a public endpoint.
+  //
+  // Gated on NODE_ENV=production so local dev (no Tap, no webhook) and
+  // the integration tests (which stub the env explicitly) both stay
+  // unaffected. The route handler also has a defence-in-depth runtime
+  // check that rejects requests if this somehow gets bypassed.
+  if (process.env.NODE_ENV === "production") {
+    const pw = process.env.TAP_ADMIN_PASSWORD;
+    if (typeof pw !== "string" || pw.length === 0) {
+      const msg =
+        "[instrumentation] TAP_ADMIN_PASSWORD must be set to a non-empty string in production. " +
+        "Set it via `flyctl secrets set --app smellgate TAP_ADMIN_PASSWORD=<value>` " +
+        "matching the value on the smellgate-tap app (docs/deployment.md).";
+      console.error(msg);
+      throw new Error(msg);
+    }
+  }
+
   const { getMigrator } = await import("./lib/db/migrations");
   const migrator = getMigrator();
   // Kysely's migrateToLatest() documents that it never throws — it returns

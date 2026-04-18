@@ -11,20 +11,43 @@ import {
   deleteStatus,
 } from "@/lib/db/queries";
 
+// Captured once at module load. `instrumentation.ts` enforces a
+// non-empty value in production; this constant is the runtime side
+// of that guarantee, and carries a deliberately conservative check
+// (`typeof === "string" && length > 0`) so we never treat an empty
+// string, `undefined`, or any truthy-but-malformed value as "auth
+// disabled". The only escape hatch is `NODE_ENV !== "production"` —
+// local dev and the integration tests read the env as literally
+// empty, which we treat as "auth not configured, skip" for ergonomic
+// reasons.
 const TAP_ADMIN_PASSWORD = process.env.TAP_ADMIN_PASSWORD;
+const AUTH_ENABLED =
+  typeof TAP_ADMIN_PASSWORD === "string" && TAP_ADMIN_PASSWORD.length > 0;
 
 const STATUSPHERE_COLLECTION = "xyz.statusphere.status";
 const SMELLGATE_NSID_PREFIX = "app.smellgate.";
 
 export async function POST(request: NextRequest) {
-  // Verify request is from our TAP server
-  if (TAP_ADMIN_PASSWORD) {
+  // Belt-and-suspenders: if the production guard in instrumentation.ts
+  // ever slips (e.g. a future refactor moves the check elsewhere),
+  // refuse to serve requests rather than fall back to "auth disabled".
+  if (process.env.NODE_ENV === "production" && !AUTH_ENABLED) {
+    return NextResponse.json(
+      { error: "Service misconfigured: TAP_ADMIN_PASSWORD is empty" },
+      { status: 503 },
+    );
+  }
+
+  // Verify request is from our TAP server. Skipped entirely in non-
+  // production when the secret is unset/empty — matches the existing
+  // contract used by tests.
+  if (AUTH_ENABLED) {
     const authHeader = request.headers.get("Authorization");
     if (!authHeader) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     try {
-      assureAdminAuth(TAP_ADMIN_PASSWORD, authHeader);
+      assureAdminAuth(TAP_ADMIN_PASSWORD as string, authHeader);
     } catch {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }

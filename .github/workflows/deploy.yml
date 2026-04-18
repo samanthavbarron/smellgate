@@ -5,11 +5,21 @@ name: Deploy
 # for v1, and the CI check `lint / typecheck / test / build` is required by
 # branch protection on `main`, so merges to main are already gated).
 #
-# Deploy runs on every push to main (i.e. every merged PR).
+# Deploy runs on every push to main (i.e. every merged PR), EXCEPT for
+# pushes that only touch files under `tap/` or the Tap deploy workflow
+# — those deploy the sibling `smellgate-tap` app via
+# `.github/workflows/deploy-tap.yml` and don't need a main-app rebuild.
+# A push that touches BOTH trees (rare; shared docs/CI only) will
+# correctly trigger both workflows. The main app's fly.toml lives at
+# the repo root, so this paths-ignore is effectively "ignore pushes
+# that only touch Tap-local files".
 
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - "tap/**"
+      - ".github/workflows/deploy-tap.yml"
 
 concurrency:
   # Serialize deploys so two rapid merges don't race each other to Fly.

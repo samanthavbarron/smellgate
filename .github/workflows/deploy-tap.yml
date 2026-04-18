@@ -1,0 +1,65 @@
+name: Deploy Tap
+
+# Production deploys for the smellgate-tap Fly app (the firehose consumer).
+#
+# Kept as a separate workflow from `.github/workflows/deploy.yml` on
+# purpose:
+#
+# 1. Paths-based triggering. The main app deploys on every push to
+#    main; this workflow only runs when files under `tap/` change.
+#    That means a UI tweak doesn't rebuild the Tap image, and a Tap
+#    image bump doesn't ship the main app.
+# 2. Separate concurrency group. The main app deploy can race a Tap
+#    deploy without either blocking the other.
+# 3. The Tap image is just a pinned FROM line — builds in seconds.
+#    The main app image is a multi-stage Node build. Keeping the
+#    workflows separate keeps the build logs legible.
+#
+# The same FLY_ACCESS_TOKEN is used — it must be app-scoped to include
+# BOTH `smellgate` and `smellgate-tap`. Fly deploy tokens default to
+# app-scoped; the current production token was created when only
+# `smellgate` existed, so the one-time setup in docs/deployment.md
+# notes it must be replaced with an org-scoped token OR a second
+# app-scoped token must be minted for `smellgate-tap`. See
+# docs/deployment.md "Tap consumer hosting" for the exact command.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "tap/**"
+      - ".github/workflows/deploy-tap.yml"
+
+concurrency:
+  group: deploy-tap-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy smellgate-tap to Fly.io
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up flyctl
+        # Same pinned tag as deploy.yml — keep these in sync when
+        # bumping. Bump deliberately via the flyctl-actions releases:
+        # https://github.com/superfly/flyctl-actions/releases
+        uses: superfly/flyctl-actions/setup-flyctl@1.6
+
+      - name: Deploy Tap to Fly
+        # `--config tap/fly.toml` points flyctl at the Tap app's config
+        # so it doesn't default to the main app's /fly.toml in the
+        # repo root. `--remote-only` builds on Fly's remote builders
+        # rather than the GitHub runner so we don't need Docker
+        # Buildx setup here.
+        run: |
+          flyctl deploy --remote-only --config tap/fly.toml
+        env:
+          FLY_ACCESS_TOKEN: ${{ secrets.FLY_ACCESS_TOKEN }}

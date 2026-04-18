@@ -25,8 +25,8 @@ Required in production:
 - `PUBLIC_URL` — hosted app URL (e.g. `https://smellgate.fly.dev`, or the custom domain once DNS is configured).
 - `PRIVATE_KEY` — ES256 JWK JSON string for OAuth client assertion signing. Generate locally with `pnpm gen-key`, then set as a Fly secret. Rotate only via redeploy; never set at runtime.
 - `SMELLGATE_CURATOR_DIDS` — comma-separated DIDs of curator accounts. Production value: `did:plc:l6l3piyd3hywg76f2udorm53` (handle [`smellgate.bsky.social`](https://bsky.app/profile/smellgate.bsky.social)). A second curator DID for Sam will be appended once that account exists.
-- `TAP_URL` — Tap consumer's HTTP endpoint. Prefer the internal `*.flycast` address if Tap runs as its own Fly app. **Not required for the first production deploy** — the app will come up healthy with an empty cache until Tap is hosted (see issue #148).
-- `TAP_ADMIN_PASSWORD` — Tap webhook shared secret. Same note as `TAP_URL`.
+- `TAP_URL` — internal URL of the `smellgate-tap` Fly app, used by `lib/db/queries.ts` `getAccountHandle` to resolve DIDs via `getTap().resolveDid(...)`. Production value is `http://smellgate-tap.flycast:2480` so traffic stays inside Fly's private network. See "Tap consumer hosting" below.
+- `TAP_ADMIN_PASSWORD` — shared secret. indigo's upstream Tap binary gates three surfaces behind this single value by design — outbound webhook auth (Tap → main app), inbound admin API auth (main app → Tap for `resolveDid`), and `/repos/add` DID enrollment. Rotation is therefore atomic and a leak compromises all three. This is an upstream indigo constraint, not a smellgate choice. Must be set to a non-empty string in production: `instrumentation.ts` hard-fails on boot when `NODE_ENV=production` and the secret is empty or unset, so a mis-config surfaces as a failed deploy rather than a silently-unauthenticated webhook. Generate once with `openssl rand -hex 32` (see "Tap consumer hosting" for the one-shot setup) and set the same value on both apps.
 
 Image-baked (set in the `Dockerfile`'s runner stage, not a Fly secret):
 
@@ -103,14 +103,112 @@ Why not `USER root` in the Dockerfile? Running the app process as root would sid
 
 ## Tap consumer hosting
 
-**Deferred to [issue #148](https://github.com/samanthavbarron/smellgate/issues/148).** The first production deploy shipped here runs only the Next.js app; no firehose consumer is attached, so the read cache starts and stays empty until Tap is wired up. The Next.js webhook at `/api/webhook` is live and waiting.
+The firehose consumer runs as a **separate Fly app** named `smellgate-tap`, configured via [`tap/fly.toml`](../tap/fly.toml) and [`tap/Dockerfile`](../tap/Dockerfile). Deploys are driven by [`.github/workflows/deploy-tap.yml`](../.github/workflows/deploy-tap.yml), which triggers on pushes to `main` that touch `tap/**`.
 
-When #148 is picked up, two reasonable shapes (unchanged from the original design):
+### What's running
 
-1. **Separate Fly app** — `smellgate-tap` in the same org/region, with `TAP_URL` set to its internal `*.flycast` address so webhook traffic never leaves the Fly private network. Cleanest isolation, slightly more machines.
-2. **Co-located process** — run Tap as a second process inside the same Fly machine via `fly.toml`'s multi-process support. Fewer machines, tighter coupling.
+The image is a single-line `FROM ghcr.io/bluesky-social/indigo/tap:<pinned-tag>` pulling the upstream Bluesky Tap Go binary. Tap handles everything:
 
-Pick whichever is cheaper at deploy time on Fly's current pricing. Both are reversible.
+- Firehose WebSocket + CBOR decoding
+- Cryptographic verification, identity caching, backfill on repo discovery
+- Cursor persistence to SQLite at `/data/tap.db` (on a Fly volume, survives machine restart)
+- Collection filtering to `app.smellgate.*` — records outside our NSID space never reach our webhook
+- Signal-collection discovery on `app.smellgate.shelfItem` — any repo that writes a shelf item gets added to tracking automatically; plus the curator DID added manually so its `perfume` records flow regardless
+- Webhook delivery to `${TAP_WEBHOOK_URL}/api/webhook` with `Authorization: Basic admin:<password>` (at-least-once; Tap retries on non-2xx)
+
+No custom TypeScript consumer was written. An earlier design sketch had the consumer be a TS wrapper around `@atproto/tap`, but that npm package is a client for a running Tap server — it doesn't subscribe to the firehose itself. A wrapper would have been a forwarder between Tap and our webhook, and Tap already supports direct webhook delivery via `TAP_WEBHOOK_URL`. Skipping the TS layer avoided a meaningful chunk of code with no benefit.
+
+### Why shape (1) "Separate Fly app" instead of (2) "Co-located process"
+
+- Crash isolation. A Tap OOM or firehose disconnect loop doesn't take down the user-facing Next.js app. With multi-process `fly.toml` they share a machine's memory budget and restart lifecycle.
+- Independent scaling. Tap holds the identity cache and cursor DB; the Next.js app is stateless-ish (SQLite cache can be rebuilt). They scale on different signals.
+- Simpler secrets. Tap needs `TAP_WEBHOOK_URL` (the main app's public URL) and `TAP_ADMIN_PASSWORD`. The main app needs `TAP_URL` (Tap's flycast URL) and the same `TAP_ADMIN_PASSWORD`. Splitting the apps makes "which secret lives where" obvious; co-located, both services would see both envs and it's easier to grow a cross-coupling.
+- Cost. Each app is `shared-cpu-1x` / 512MB = within Fly's free allowance for two machines. The overhead is negligible.
+
+### One-time Fly setup for smellgate-tap
+
+Run once, from a machine with `flyctl` logged in to the Fly org hosting `smellgate`:
+
+```sh
+# 1. Create the app shell. Same org/region as the main app.
+flyctl apps create smellgate-tap
+
+# 2. Persistent volume for Tap's cursor + identity cache.
+#    1GB is Fly's minimum and is more than enough for a small deployment.
+flyctl volumes create tap_data --size 1 --region iad --app smellgate-tap
+
+# 3. Generate the shared secret ONCE. Same byte-for-byte value on both apps.
+#    `openssl rand -hex 32` gives 64 hex chars; any length works for Basic auth.
+TAP_ADMIN_PASSWORD=$(openssl rand -hex 32)
+
+# 4. Set secrets on smellgate-tap (where to POST events, and the shared
+#    secret to sign those POSTs with).
+flyctl secrets set --app smellgate-tap \
+  TAP_WEBHOOK_URL=https://smellgate.fly.dev/api/webhook \
+  TAP_ADMIN_PASSWORD="$TAP_ADMIN_PASSWORD"
+
+# 5. Set matching secrets on the main smellgate app so (a) its
+#    `getTap().resolveDid(...)` calls can reach Tap over flycast, and
+#    (b) its `/api/webhook` route verifies incoming POSTs against the
+#    same shared secret.
+flyctl secrets set --app smellgate \
+  TAP_URL=http://smellgate-tap.flycast:2480 \
+  TAP_ADMIN_PASSWORD="$TAP_ADMIN_PASSWORD"
+
+# 6. First deploy of smellgate-tap. Either push a commit that touches
+#    `tap/**` and let the workflow run, or run locally:
+flyctl deploy --remote-only --config tap/fly.toml
+
+# 7. Seed Tap with the curator DID so `app.smellgate.perfume` records
+#    flow from day one (the signal-collection discovery only triggers
+#    on `app.smellgate.shelfItem`, and the curator doesn't write those).
+#    smellgate-tap's fly.toml deliberately does NOT expose a public HTTP
+#    listener (the `services.ports` block has `handlers = []`), so the
+#    seed call goes over a Fly wireguard proxy rather than the public
+#    *.fly.dev hostname. The helper script handles that:
+tap/seed-curator.sh did:plc:l6l3piyd3hywg76f2udorm53
+```
+
+After step 6 plus step 7 run, every subsequent merge to `main` that touches `tap/**` deploys automatically. Every merge that touches anything else deploys only the main `smellgate` app.
+
+### Post-deploy sanity checks
+
+```sh
+# 1. How many repos is Tap subscribed to? Expect "1" right after step 7
+#    (the curator); grows as users write `app.smellgate.shelfItem`
+#    records and the signal-collection crawler picks them up.
+flyctl proxy 2480 -a smellgate-tap &
+sleep 2
+curl -s -u "admin:$TAP_ADMIN_PASSWORD" http://localhost:2480/stats/repo-count
+pkill -f "flyctl proxy 2480"
+
+# 2. Is the webhook flowing? Watch for `webhook: delivered` in Tap's
+#    logs as the curator's perfume records backfill, and matching 200s
+#    on /api/webhook in the main app's logs.
+flyctl logs --app smellgate-tap
+flyctl logs --app smellgate
+```
+
+### Fly access token scope
+
+The `FLY_ACCESS_TOKEN` GitHub Actions secret (on the `production` environment) must grant deploy permission on **both** apps. Use an **org-scoped deploy token**: one token, works for any current or future app in the org, and the blast radius of a leak is bounded by the GitHub Actions environment secret scoping anyway.
+
+```sh
+flyctl tokens create org <your-org>
+# Paste the output into the GitHub repo's `production` environment secret FLY_ACCESS_TOKEN.
+```
+
+If the existing token was created with `flyctl tokens create deploy` before `smellgate-tap` existed, it's app-scoped to `smellgate` only and the Tap deploy workflow will fail with an auth error on first run. Rotate to an org-scoped token (command above) before merging the first PR that touches `tap/**`. There's a hacky comma-delimited per-app-token form flyctl also accepts; don't use it for this — the org-scoped token is the right answer.
+
+### End-to-end verification
+
+After the Tap app is deployed and the curator DID has been added (step 7 above):
+
+1. `flyctl logs --app smellgate-tap` — watch for `webhook: delivered` lines once events start arriving. Backfill on the curator repo takes a few seconds; subsequent live events appear within firehose latency (~sub-second).
+2. `flyctl logs --app smellgate` — watch `/api/webhook` POST 200s. If you see 401s, the shared secret is mismatched between apps. If you see 500s, the dispatcher is throwing (turn on `SMELLGATE_TAP_DEBUG=1` on the main app temporarily).
+3. From any Bluesky account, write a `app.smellgate.description` record for an existing canonical perfume (via `pnpm agent:as` locally or the UI composer once Tap is live in front of the production app). Within seconds, `curl https://smellgate.fly.dev/perfume/<at-uri>` should render the new description.
+
+If step 3 fails, the drop-reason is almost always one of: (a) record didn't validate against the generated lexicon (check with `pnpm build:lex && node -e ...`), (b) the `SMELLGATE_CURATOR_DIDS` list on the main app doesn't include the author DID for curator-only record types, (c) the `TAP_ADMIN_PASSWORD` values on the two apps disagree. Turn on `SMELLGATE_TAP_DEBUG=1` via `flyctl secrets set` on the main app to surface drop reasons.
 
 ## Rollback story
 
