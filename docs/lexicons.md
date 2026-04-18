@@ -147,19 +147,15 @@ When a user tries to add a perfume to their shelf (or review it, etc.) and the p
 
 1. The client walks them through a "submit a new perfume" form.
 2. The client writes a `app.smellgate.perfumeSubmission` to **their own PDS**.
-3. The client **also** writes whatever the user originally wanted (shelfItem, review, etc.), but with the `perfume` strongRef pointing at the submission's AT-URI. These records are in a "pending" state from the app's perspective because the reference target is a submission rather than a canonical perfume.
+3. The user's client surfaces the submission as "pending curator review". Shelf/review/description writes that reference a `perfumeSubmission` URI are **rejected at the write layer** — both the server-action guard (`requirePerfumeCollection` in `lib/server/smellgate-actions.ts`, PR #160) and the dispatcher's symmetric drop (PRs #168/#180/#194/#201) require `perfume.uri` to resolve to an `app.smellgate.perfume` record. Users can revisit after the curator publishes the canonical perfume.
 4. A curator reviews the submission. On approval, the curator account writes a `app.smellgate.perfume` record and a `app.smellgate.perfumeSubmissionResolution` linking the two.
-5. The client (or a backend rewriter) notices the resolution and rewrites the user's pending records to point at the canonical perfume AT-URI instead. This is a record edit, not a new record — the original `tid` and intent are preserved.
-6. On `"duplicate"` resolution, the same rewrite happens but to the existing canonical record the curator identified.
-7. On `"rejected"` resolution, the client prompts the user and offers to either edit the submission or delete the pending records.
+5. With the canonical perfume now in the catalog, the user can write their shelfItem / review / description against the canonical AT-URI in the normal way.
+6. On `"duplicate"` resolution, the resolution points at an existing canonical record the curator identified; same user-side follow-up.
+7. On `"rejected"` resolution, the client prompts the user and offers to edit the submission.
 
-The rewrite step (5) is the subtle bit. Alternatives we considered and rejected:
+### Retired: user-pending records + backend rewrite
 
-- **Reject everything that references a non-canonical perfume.** Bad UX — users lose their review if the submission is pending.
-- **Eagerly copy the canonical fields into every user record.** Violates Pattern B (user records stop being references and become partial duplicates of the catalog).
-- **Use a single "pending" placeholder record that's later deleted.** Leaves dangling references in the firehose and breaks the immutability property of strongRefs.
-
-The chosen flow keeps user records as references throughout and uses the edit path to update them. Strongrefs still work because editing a record produces a new CID that the client can re-pin.
+An earlier design (Phase 3.C) had users write pending shelfItems / reviews / descriptions against the `perfumeSubmission` URI, and a post-login rewriter (`rewritePendingRecords` in `lib/server/smellgate-curator-actions.ts`) would repoint them once the curator canonicalized. That flow is retired: since PR #160 and the symmetric dispatcher guards in PR #201, those pending records cannot reach the cache, and `getPendingRecordsForUser`'s INNER JOIN against `smellgate_perfume_submission` always returns empty. The function and its supporting query are kept as dormant code for reference; the integration tests under `tests/integration/curator-submission-flow.test.ts` that exercised the rewrite are `.skip`'d with an explanatory comment.
 
 ## Open questions
 
