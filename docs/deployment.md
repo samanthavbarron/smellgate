@@ -114,7 +114,7 @@ The image is a single-line `FROM ghcr.io/bluesky-social/indigo/tap:<pinned-tag>`
 - Cursor persistence to SQLite at `/data/tap.db` (on a Fly volume, survives machine restart)
 - Collection filtering to `app.smellgate.*` — records outside our NSID space never reach our webhook
 - Signal-collection discovery on `app.smellgate.shelfItem` — any repo that writes a shelf item gets added to tracking automatically; plus the curator DID added manually so its `perfume` records flow regardless
-- Webhook delivery to `${TAP_WEBHOOK_URL}/api/webhook` with `Authorization: Basic admin:<password>` (at-least-once; Tap retries on non-2xx)
+- Webhook delivery to the URL in `TAP_WEBHOOK_URL` (MUST include the `/api/webhook` path — Tap POSTs to the URL verbatim and does NOT append any path; see Gotchas below) with `Authorization: Basic admin:<password>` (at-least-once; Tap retries on non-2xx)
 
 No custom TypeScript consumer was written. An earlier design sketch had the consumer be a TS wrapper around `@atproto/tap`, but that npm package is a client for a running Tap server — it doesn't subscribe to the firehose itself. A wrapper would have been a forwarder between Tap and our webhook, and Tap already supports direct webhook delivery via `TAP_WEBHOOK_URL`. Skipping the TS layer avoided a meaningful chunk of code with no benefit.
 
@@ -187,7 +187,22 @@ pkill -f "flyctl proxy 2480"
 #    on /api/webhook in the main app's logs.
 flyctl logs --app smellgate-tap
 flyctl logs --app smellgate
+
+# 3. Verify the webhook URL actually includes the /api/webhook path.
+#    The #211 failure mode: if TAP_WEBHOOK_URL was set to just the
+#    host (e.g. https://smellgate.fly.dev) without the path, Tap POSTs
+#    to the Next.js home page, which returns HTTP 200 (a normal page
+#    render). Tap interprets 200 as "delivered", acks the event,
+#    deletes it from outbox_buffers, and no record ever reaches
+#    /api/webhook. Silent data loss. To confirm the secret is correct:
+flyctl ssh console -a smellgate-tap -C 'env' | grep TAP_WEBHOOK_URL
+# Expected: TAP_WEBHOOK_URL=https://smellgate.fly.dev/api/webhook
+# If the path is missing, re-run step 4 from the one-time setup above.
 ```
+
+### Gotchas
+
+- **`TAP_WEBHOOK_URL` must include the `/api/webhook` path.** Indigo's Tap binary (see `webhook_client.go` in `cmd/tap`) POSTs to the URL *verbatim* — it does not append any route. Setting the secret to `https://smellgate.fly.dev` (bare host) will cause Tap to POST to `/`, Next.js will return HTTP 200 rendering the home page, Tap will treat that as delivery success, and events will be silently acked and dropped. The receiving app never sees them. This was issue #211. Always set the full URL including path: `TAP_WEBHOOK_URL=https://smellgate.fly.dev/api/webhook`.
 
 ### Fly access token scope
 

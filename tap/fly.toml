@@ -33,6 +33,13 @@ primary_region = "iad"
 # Non-secret env. Secrets (TAP_WEBHOOK_URL, TAP_ADMIN_PASSWORD) are set
 # via `flyctl secrets set --app smellgate-tap ...` — see docs/deployment.md
 # "Tap consumer hosting" for the one-time setup commands.
+#
+# IMPORTANT: TAP_WEBHOOK_URL must be the FULL URL including `/api/webhook`.
+# Tap POSTs verbatim — no path is appended. A bare host (e.g.
+# https://smellgate.fly.dev) makes Tap POST to the Next.js home page,
+# which returns HTTP 200, Tap treats that as successful delivery, and
+# every event is silently dropped. See issue #211 for the forensics.
+# Expected value: `TAP_WEBHOOK_URL=https://smellgate.fly.dev/api/webhook`.
 # ---------------------------------------------------------------------------
 [env]
   # Persist cursor + repo state on the mounted volume. Without this,
