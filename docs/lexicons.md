@@ -59,12 +59,12 @@ All records use `tid` keys (the ATProto default for timestamp-ordered records) u
 **Written by:** curator account only. Enforced at the app layer (the app refuses to surface or index `perfume` records authored by non-curator DIDs).
 
 Fields:
-- `name` (string, required)
-- `house` (string, required) — the perfume house / brand (e.g. "Guerlain")
-- `creator` (string, optional) — the perfumer / nose, when known (e.g. "Jacques Guerlain")
-- `releaseYear` (integer, optional)
-- `notes` (array of strings, required, min 1) — free-form tag strings. Normalized lowercase. The tag namespace is deliberately flat; we don't split into top/heart/base in v1.
-- `description` (string, optional) — the "creator description" from PLAN.md. This is the curator-authored canonical blurb, distinct from community `description` records.
+- `name` (string, required, `maxGraphemes: 200`)
+- `house` (string, required, `maxGraphemes: 200`) — the perfume house / brand (e.g. "Guerlain")
+- `creator` (string, optional, `maxGraphemes: 200`) — the perfumer / nose, when known (e.g. "Jacques Guerlain")
+- `releaseYear` (integer, optional, `minimum: 1700`)
+- `notes` (array of strings, required, `minLength: 1`, `maxLength: 50`; each item `minLength: 1`, `maxGraphemes: 100`) — free-form tag strings. Normalized lowercase. The tag namespace is deliberately flat; we don't split into top/heart/base in v1.
+- `description` (string, optional, `maxGraphemes: 15000`) — the "creator description" from PLAN.md. This is the curator-authored canonical blurb, distinct from community `description` records.
 - `externalRefs` (array of objects, optional) — future-proofing for if we ever want to link out. Each: `{source: string, url: string}`. Do not use as a primary key.
 - `createdAt` (datetime, required)
 
@@ -74,8 +74,8 @@ Fields:
 
 A submission is a proposal to add a perfume to the canonical catalog. Curators review it and either (a) publish a corresponding `app.smellgate.perfume` record and mark the submission resolved, or (b) reject it.
 
-Fields: same shape as `perfume` (name/house/creator/releaseYear/notes/description), plus:
-- `rationale` (string, optional, min 1 if present) — user's note to the curator. `minLength: 1` so an empty-string rationale is rejected at the lexicon layer (the field is optional, but if present it must carry content).
+Fields: same shape as `perfume` (name/house/creator/releaseYear/notes/description, with the same bounds — `maxGraphemes: 200` on name/house/creator, `minimum: 1700` on releaseYear, `minLength: 1, maxLength: 50` with per-item `maxGraphemes: 100` on notes, `maxGraphemes: 15000` on description), plus:
+- `rationale` (string, optional, `minLength: 1` if present) — user's note to the curator. An empty-string rationale is rejected at the lexicon layer (the field is optional, but if present it must carry content).
 - `createdAt` (datetime, required)
 
 There is no `status` field on the submission itself. Resolution is tracked by a separate curator-authored record (see `perfumeSubmissionResolution` below) so that submissions remain append-only from the submitter's perspective.
@@ -96,7 +96,7 @@ There is no `status` field on the submission itself. Resolution is tracked by a 
 
 - `perfume` (strongRef to `app.smellgate.perfume`, required)
 - `acquiredAt` (datetime, optional)
-- `bottleSizeMl` (integer, optional)
+- `bottleSizeMl` (integer, optional, `minimum: 1`, `maximum: 1000`)
 - `isDecant` (boolean, optional)
 - `createdAt` (datetime, required)
 
