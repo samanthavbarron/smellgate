@@ -1,0 +1,10 @@
+{
+  "$type": "app.smellgate.perfumeSubmission",
+  "name": "Long But OK Note",
+  "house": "Succinct House",
+  "notes": [
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "rose"
+  ],
+  "createdAt": "2024-02-01T08:00:00.000Z"
+}

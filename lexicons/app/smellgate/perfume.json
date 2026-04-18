@@ -30,14 +30,17 @@
           "notes": {
             "type": "array",
             "minLength": 1,
-            "description": "Free-form tag strings. Normalized lowercase. The tag namespace is deliberately flat in v1.",
+            "maxLength": 50,
+            "description": "Free-form tag strings. Normalized lowercase. The tag namespace is deliberately flat in v1. Real perfumes list 5-15 notes; 50 is a generous upper bound.",
             "items": {
               "type": "string",
-              "minLength": 1
+              "minLength": 1,
+              "maxGraphemes": 100
             }
           },
           "description": {
             "type": "string",
+            "maxGraphemes": 15000,
             "description": "Curator-authored canonical blurb, distinct from community description records."
           },
           "externalRefs": {

@@ -28,4 +28,33 @@ describe('app.smellgate.comment validator', () => {
       expect(result.success).toBe(false)
     })
   }
+
+  // Programmatic boundary assertions for comment.body (#196). Like #192 /
+  // #193, the lexicon declares minLength: 1 / maxGraphemes: 5000 — bsky.social
+  // doesn't enforce third-party lexicons, so the dispatcher's $safeParse is
+  // the enforcement seam. These tests pin that contract.
+  describe('body bounds (#196)', () => {
+    const build = (body: unknown) => ({
+      $type: 'app.smellgate.comment',
+      subject: {
+        uri: 'at://did:plc:fixtureusersxxxxxxxxxxxxx/app.smellgate.review/3kxyz444ddd',
+        cid: 'bafyreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku',
+      },
+      body,
+      createdAt: '2024-02-15T13:00:00.000Z',
+    })
+
+    it('accepts body at exactly 5000 graphemes (inclusive upper bound)', () => {
+      expect($safeParse(build('c'.repeat(5000))).success).toBe(true)
+    })
+
+    it('rejects body at 5001 and 6000 graphemes (#196 repro)', () => {
+      expect($safeParse(build('c'.repeat(5001))).success).toBe(false)
+      expect($safeParse(build('c'.repeat(6000))).success).toBe(false)
+    })
+
+    it('rejects empty body (minLength: 1, #196 repro)', () => {
+      expect($safeParse(build('')).success).toBe(false)
+    })
+  })
 })
