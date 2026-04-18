@@ -58,9 +58,7 @@ export default async function PerfumeDetailPage({
     getPerfumeByUri(db, uri),
   ]);
   if (!perfume) {
-    // Scoped `not-found.tsx` sibling (issue #123, option a) renders the
-    // user-facing 404 copy. Chose scoped over a global `app/not-found.tsx`
-    // so the fallback can reference the perfume-specific context.
+    // Rendered by the scoped `not-found.tsx` sibling (#123).
     notFound();
   }
 
