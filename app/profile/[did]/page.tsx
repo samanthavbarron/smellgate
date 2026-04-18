@@ -119,16 +119,22 @@ export default async function ProfilePage({ params }: { params: Params }) {
         <div className="mt-2 break-all font-mono text-xs text-zinc-500 dark:text-zinc-500">
           {did}
         </div>
-        {isSelf && (
-          <div className="mt-3">
+        <div className="mt-3 flex flex-wrap gap-4 text-sm">
+          <Link
+            href={`/profile/${encodeURIComponent(did)}/submissions`}
+            className="text-amber-700 underline hover:text-amber-800 dark:text-amber-400 dark:hover:text-amber-300"
+          >
+            Submissions →
+          </Link>
+          {isSelf && (
             <Link
               href="/profile/me/submissions"
-              className="text-sm text-amber-700 underline hover:text-amber-800 dark:text-amber-400 dark:hover:text-amber-300"
+              className="text-amber-700 underline hover:text-amber-800 dark:text-amber-400 dark:hover:text-amber-300"
             >
-              My submissions →
+              My submissions (live) →
             </Link>
-          </div>
-        )}
+          )}
+        </div>
       </section>
 
       {/* Shelf ------------------------------------------------------- */}

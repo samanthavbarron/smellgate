@@ -41,6 +41,7 @@ import {
   findCanonicalByNameHouse,
   getPerfumeByUri,
   getResolutionForSubmission,
+  getSubmissionsForDid,
 } from "../db/smellgate-queries";
 import type { DatabaseSchema } from "../db";
 import { countGraphemes } from "../graphemes";
@@ -1238,6 +1239,68 @@ export async function listMySubmissionsAction(
   // records; sorting explicitly keeps the page stable.
   // Lexicographic string compare on ISO-8601 is equivalent to numeric
   // compare by epoch, so `localeCompare` is sufficient.
+  items.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return items;
+}
+
+/**
+ * List an arbitrary DID's `app.smellgate.perfumeSubmission` records,
+ * annotated with resolution state. Powers the public
+ * `/profile/<did>/submissions` route (issue #173). Unlike
+ * `listMySubmissionsAction`, this reads from the smellgate cache only
+ * — we can't list a foreign PDS without their OAuth session — so a
+ * record authored in the last few seconds may briefly be absent.
+ *
+ * The return shape matches `listMySubmissionsAction` so the same
+ * rendering code paths (grouping, chips, copy) work unchanged for
+ * both the self and public views.
+ */
+export async function listSubmissionsForDidAction(
+  db: Db,
+  did: string,
+): Promise<MySubmissionItem[]> {
+  const rows = await getSubmissionsForDid(db, did, { limit: 100 });
+  const items: MySubmissionItem[] = [];
+  for (const row of rows) {
+    const resolution = await getResolutionForSubmission(db, row.uri);
+    let state: SubmissionState;
+    let resolvedPerfumeUri: string | undefined;
+    let resolutionNote: string | undefined;
+    let resolutionUri: string | undefined;
+    if (!resolution) {
+      state = "pending";
+    } else {
+      resolutionUri = resolution.uri;
+      resolvedPerfumeUri = resolution.perfume_uri ?? undefined;
+      resolutionNote = resolution.note ?? undefined;
+      if (
+        resolution.decision === "approved" ||
+        resolution.decision === "rejected" ||
+        resolution.decision === "duplicate"
+      ) {
+        state = resolution.decision;
+      } else {
+        state = "pending";
+      }
+    }
+    items.push({
+      uri: row.uri,
+      state,
+      name: row.name,
+      house: row.house,
+      ...(row.creator ? { creator: row.creator } : {}),
+      ...(row.release_year ? { releaseYear: row.release_year } : {}),
+      notes: row.notes,
+      ...(row.description ? { description: row.description } : {}),
+      ...(row.rationale ? { rationale: row.rationale } : {}),
+      createdAt: row.created_at,
+      ...(resolvedPerfumeUri ? { resolvedPerfumeUri } : {}),
+      ...(resolutionNote ? { resolutionNote } : {}),
+      ...(resolutionUri ? { resolutionUri } : {}),
+    });
+  }
+  // `getSubmissionsForDid` already returns newest-first by indexed_at;
+  // re-sort by createdAt for parity with `listMySubmissionsAction`.
   items.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   return items;
 }
