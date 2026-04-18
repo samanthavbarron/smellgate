@@ -16,8 +16,9 @@
 #   Tap's admin surface (/repos/add, /repos/remove, /resolve/:did) is
 #   password-protected but still doesn't belong on the public internet.
 # - Event flow: Tap POSTs to the main app's /api/webhook. That's an
-#   OUTBOUND connection from this machine to smellgate.fly.dev. No
-#   inbound port is exposed to the internet for that.
+#   OUTBOUND connection from this machine to smellgate.app (set via
+#   TAP_WEBHOOK_URL secret). No inbound port is exposed to the internet
+#   for that.
 #
 # Healthcheck: Tap exposes GET /health. We point Fly's TCP-level
 # machine check at :2480 via the [[services.tcp_checks]] block below.

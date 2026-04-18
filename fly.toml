@@ -3,8 +3,9 @@
 # - Single app (not split into smellgate + smellgate-tap). Tap hosting is
 #   deferred to its own PR; see issue #148.
 # - Region iad (us-east); SQLite cache lives on a 1GB volume at /data.
-# - First deploy host: https://smellgate.fly.dev. Custom domain is a
-#   follow-up (docs/deployment.md "DNS").
+# - Public host: https://smellgate.app (custom domain, Let's Encrypt via
+#   `fly certs add`). Also reachable at https://smellgate.fly.dev but the
+#   OAuth client_id is keyed off PUBLIC_URL=https://smellgate.app.
 # - Healthcheck hits GET /api/health, which is intentionally DB/auth-free
 #   so a broken auth config doesn't lock the machine out of starting.
 
