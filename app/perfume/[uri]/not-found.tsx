@@ -17,6 +17,12 @@ import Link from "next/link";
 export default function PerfumeNotFound() {
   return (
     <div className="space-y-12">
+      {/* `page.tsx` renders this inline with HTTP 200 (see its header
+          comment for the Next.js 16 mid-stream bailout forcing the
+          shape). Mark the soft-404 paths non-indexable so a crawler
+          doesn't index junk URIs. React 19 / Next.js 16 hoists
+          nested `<meta>` tags to <head>. */}
+      <meta name="robots" content="noindex" />
       <section className="text-center">
         <h1 className="text-4xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-100">
           Perfume not found
