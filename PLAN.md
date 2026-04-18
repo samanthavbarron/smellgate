@@ -2,7 +2,7 @@
 
 ## Overall Idea
 
-I want to build a letterboxd-style app/website where people can log perfumes they have, write a review for perfumes (include ratings for sillage), and also write a description that can be upvoted/downvoted by other people. we want there to be a simple minimalist page where it shows the perfume, lists the creator and the notes (clickable as tags so you can see other perfumes that have those notes or other perfumes by the creator), any existing description by the creator.
+I want to build an app/website where people can log perfumes they have, write a review for perfumes (include ratings for sillage), and also write a description that can be upvoted/downvoted by other people. we want there to be a simple minimalist page where it shows the perfume, lists the creator and the notes (clickable as tags so you can see other perfumes that have those notes or other perfumes by the creator), any existing description by the creator.
 
 So people can click on their own profile, see what they have on their “perfume shelf” (perfumes they own), see what they have reviewed, see what descriptions they’ve written, and people can see eachothers profiles. you can comment on reviews too
 

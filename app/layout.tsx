@@ -7,7 +7,7 @@ import { isCurator } from "@/lib/curators";
 
 export const metadata: Metadata = {
   title: "smellgate",
-  description: "A letterboxd-style app for perfume, built on ATProto",
+  description: "Log, rate, and review perfumes on ATProto",
 };
 
 export default async function RootLayout({
