@@ -270,3 +270,180 @@ describe("/api/webhook route wiring", () => {
     expect(Number(statusCount.c)).toBe(0);
   });
 });
+
+// ===========================================================================
+// Tap shared-secret auth path (issue #148)
+//
+// In production the webhook is reached over Fly's internal `.flycast`
+// network only, but the route still enforces a shared secret because
+// anyone who can reach the main app's public URL could otherwise POST
+// forged events. These tests exercise the `assureAdminAuth` branch in
+// `app/api/webhook/route.ts` against the exact Basic-auth header
+// format Tap's Go binary sends (`Basic ` + base64("admin:<password>")).
+//
+// Separate describe block (rather than adding cases to the block above)
+// because it needs a different `freshEnv`: TAP_ADMIN_PASSWORD stubbed
+// to a non-empty value BEFORE the route module is imported. The route
+// captures the env at module load, so changing it mid-test is a
+// no-op.
+// ===========================================================================
+
+async function freshEnvWithAuth(password: string): Promise<{
+  route: RouteModule;
+  db: DbIndexModule;
+  dispose: () => void;
+}> {
+  const dbPath = path.join(
+    fs.mkdtempSync(path.join(os.tmpdir(), "smellgate-webhook-auth-")),
+    "cache.db",
+  );
+  vi.stubEnv("DATABASE_PATH", dbPath);
+  vi.stubEnv("SMELLGATE_CURATOR_DIDS", CURATOR_DID);
+  vi.stubEnv("TAP_ADMIN_PASSWORD", password);
+  vi.resetModules();
+
+  const migrations: MigrationsModule = await import("../../lib/db/migrations");
+  const { error } = await migrations.getMigrator().migrateToLatest();
+  if (error) throw error;
+
+  const db: DbIndexModule = await import("../../lib/db");
+  const route: RouteModule = await import("../../app/api/webhook/route");
+
+  return {
+    route,
+    db,
+    dispose: () => {
+      try {
+        fs.rmSync(path.dirname(dbPath), { recursive: true, force: true });
+      } catch {
+        // best effort
+      }
+    },
+  };
+}
+
+function basicAuthHeader(password: string): string {
+  // Mirror `formatAdminAuthHeader` from @atproto/tap/util. Kept inline
+  // rather than imported so the test asserts on the exact wire format
+  // the Tap Go binary produces, not on an internal helper.
+  return "Basic " + Buffer.from(`admin:${password}`).toString("base64");
+}
+
+function makeRequestWithAuth(body: unknown, authHeader: string): NextRequest {
+  return new NextRequest("http://localhost/api/webhook", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: authHeader,
+    },
+    body: JSON.stringify(body),
+  });
+}
+
+describe("/api/webhook shared-secret auth", () => {
+  const PASSWORD = "s3cret-f0r-tap-and-main-app";
+  let env: Awaited<ReturnType<typeof freshEnvWithAuth>>;
+
+  beforeEach(async () => {
+    rkeyCounter = 0;
+    env = await freshEnvWithAuth(PASSWORD);
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    env.dispose();
+  });
+
+  it("accepts a POST with the correct Basic auth header", async () => {
+    const body = recordEventBody("app.smellgate.perfume", CURATOR_DID, {
+      $type: "app.smellgate.perfume",
+      name: "Authenticated Aventus",
+      house: "Creed",
+      notes: ["pineapple"],
+      createdAt: nowIso(),
+    });
+
+    const res = await env.route.POST(
+      makeRequestWithAuth(body, basicAuthHeader(PASSWORD)),
+    );
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ success: true });
+
+    const db = env.db.getDb();
+    const row = await db
+      .selectFrom("smellgate_perfume")
+      .selectAll()
+      .executeTakeFirstOrThrow();
+    expect(row.name).toBe("Authenticated Aventus");
+  });
+
+  it("rejects a POST with no Authorization header when auth is enabled", async () => {
+    const body = recordEventBody("app.smellgate.perfume", CURATOR_DID, {
+      $type: "app.smellgate.perfume",
+      name: "Unauthorized",
+      house: "Nowhere",
+      notes: ["vanilla"],
+      createdAt: nowIso(),
+    });
+
+    const res = await env.route.POST(makeRequest(body));
+    expect(res.status).toBe(401);
+    await expect(res.json()).resolves.toEqual({ error: "Unauthorized" });
+
+    // And no side effects on the cache.
+    const db = env.db.getDb();
+    const count = await db
+      .selectFrom("smellgate_perfume")
+      .select(db.fn.countAll<number>().as("c"))
+      .executeTakeFirstOrThrow();
+    expect(Number(count.c)).toBe(0);
+  });
+
+  it("rejects a POST with a wrong password", async () => {
+    const body = recordEventBody("app.smellgate.perfume", CURATOR_DID, {
+      $type: "app.smellgate.perfume",
+      name: "Wrong-pass",
+      house: "Nowhere",
+      notes: ["vanilla"],
+      createdAt: nowIso(),
+    });
+
+    const res = await env.route.POST(
+      makeRequestWithAuth(body, basicAuthHeader("definitely-not-the-password")),
+    );
+    expect(res.status).toBe(401);
+
+    const db = env.db.getDb();
+    const count = await db
+      .selectFrom("smellgate_perfume")
+      .select(db.fn.countAll<number>().as("c"))
+      .executeTakeFirstOrThrow();
+    expect(Number(count.c)).toBe(0);
+  });
+
+  it("rejects a POST with a malformed Basic auth header", async () => {
+    const body = recordEventBody("app.smellgate.perfume", CURATOR_DID, {
+      $type: "app.smellgate.perfume",
+      name: "Malformed",
+      house: "Nowhere",
+      notes: ["vanilla"],
+      createdAt: nowIso(),
+    });
+
+    // Non-base64 after the "Basic " prefix. assureAdminAuth parses the
+    // header with `Buffer.from(noPrefix, 'base64')` which is lenient,
+    // but it then splits on ":" and checks the username — which won't
+    // match "admin" here, so the path throws.
+    const res = await env.route.POST(
+      makeRequestWithAuth(body, "Basic not-base64-at-all"),
+    );
+    expect(res.status).toBe(401);
+
+    const db = env.db.getDb();
+    const count = await db
+      .selectFrom("smellgate_perfume")
+      .select(db.fn.countAll<number>().as("c"))
+      .executeTakeFirstOrThrow();
+    expect(Number(count.c)).toBe(0);
+  });
+});

@@ -1,0 +1,119 @@
+# Fly.io app config for smellgate-tap.
+#
+# This app runs the upstream Bluesky Tap Go binary
+# (ghcr.io/bluesky-social/indigo/tap) as the firehose consumer for
+# smellgate. See tap/Dockerfile for the "why a Go binary, not a TS
+# consumer" rationale.
+#
+# - Region iad — same as the main smellgate app for flycast latency.
+# - Single machine; Tap holds cursor state in SQLite at /data/tap.db
+#   (via TAP_DATABASE_URL below) and does not yet support multi-replica
+#   operation in webhook-delivery mode.
+# - Volume `tap_data` at /data for cursor persistence across restarts.
+# - Internal services only: the main smellgate app reaches Tap for DID
+#   resolution (`getTap().resolveDid(...)` in lib/db/queries.ts) over
+#   the private `.flycast` network. There is NO public http_service;
+#   Tap's admin surface (/repos/add, /repos/remove, /resolve/:did) is
+#   password-protected but still doesn't belong on the public internet.
+# - Event flow: Tap POSTs to the main app's /api/webhook. That's an
+#   OUTBOUND connection from this machine to smellgate.fly.dev. No
+#   inbound port is exposed to the internet for that.
+#
+# Healthcheck: Tap exposes GET /health. We point Fly's TCP-level
+# machine check at :2480 via the [[services.tcp_checks]] block below.
+# Tap's /health returns quickly and has no side effects.
+
+app = "smellgate-tap"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+# ---------------------------------------------------------------------------
+# Non-secret env. Secrets (TAP_WEBHOOK_URL, TAP_ADMIN_PASSWORD) are set
+# via `flyctl secrets set --app smellgate-tap ...` — see docs/deployment.md
+# "Tap consumer hosting" for the one-time setup commands.
+# ---------------------------------------------------------------------------
+[env]
+  # Persist cursor + repo state on the mounted volume. Without this,
+  # Tap writes to its WORKDIR (/data) which IS the mount point, but
+  # being explicit makes the contract visible in this file.
+  TAP_DATABASE_URL = "sqlite:///data/tap.db"
+
+  # Filter records down to smellgate's 8 NSIDs before webhook delivery.
+  # Wildcards only at the period breaks — `app.smellgate.*` matches all
+  # 8 of our record types (perfume, perfumeSubmission, *Resolution,
+  # shelfItem, review, description, vote, comment). Anything outside
+  # this prefix is dropped at the Tap layer and never reaches our
+  # webhook, saving a round-trip. The dispatcher in
+  # `lib/tap/smellgate.ts` also filters by NSID as a belt-and-suspenders
+  # safety net.
+  TAP_COLLECTION_FILTERS = "app.smellgate.*"
+
+  # Discover repos by signal collection: any repo that has at least one
+  # `app.smellgate.shelfItem` record gets added to tracking
+  # automatically. This covers "users who actively use smellgate"
+  # without paying the full-network backfill cost. The curator DID is
+  # added explicitly via `/repos/add` during first-time setup (see
+  # docs/deployment.md) so its `app.smellgate.perfume` records flow
+  # even though the curator doesn't write shelf items.
+  #
+  # Rejected alternative: TAP_FULL_NETWORK=true. Correct but backfills
+  # every repo on the network, taking days and a lot of disk on the
+  # :2480 SQLite. Revisit if signal-collection misses material users.
+  TAP_SIGNAL_COLLECTION = "app.smellgate.shelfItem"
+
+  # Pin Tap to the public relay. Default is already this URL in the
+  # binary but being explicit avoids surprises on version bumps.
+  TAP_RELAY_URL = "https://relay1.us-east.bsky.network"
+
+  # Modest log verbosity. Flip to `debug` temporarily when bringing the
+  # consumer up or chasing missing events.
+  TAP_LOG_LEVEL = "info"
+
+# ---------------------------------------------------------------------------
+# Internal Fly service. Used by the main `smellgate` app over the
+# private `.flycast` network for DID resolution (lib/db/queries.ts
+# `getAccountHandle` calls `getTap().resolveDid(...)` against the Tap
+# HTTP API). No public edge listener — this is a private-network-only
+# service.
+# ---------------------------------------------------------------------------
+[[services]]
+  internal_port = 2480
+  protocol = "tcp"
+  auto_stop_machines = false
+  auto_start_machines = false
+  min_machines_running = 1
+  processes = ["app"]
+
+  [[services.ports]]
+    # flycast port — reached as `smellgate-tap.flycast:2480` from the
+    # main app. No handlers → no public edge.
+    port = 2480
+    handlers = []
+
+  [[services.tcp_checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "30s"
+
+# ---------------------------------------------------------------------------
+# Persistent volume for Tap's SQLite cursor DB + identity cache.
+# 1GB is the Fly minimum and is far more than Tap needs for a small
+# smellgate deployment. Revisit sizing if we move to full-network mode.
+# ---------------------------------------------------------------------------
+[[mounts]]
+  source = "tap_data"
+  destination = "/data"
+
+# ---------------------------------------------------------------------------
+# VM sizing. Tap is more work than the main Next.js app because it
+# decodes every firehose event before filtering. Start shared-cpu-1x
+# and bump memory if identity-cache pressure drives it (default
+# TAP_IDENT_CACHE_SIZE=2000000 is large).
+# ---------------------------------------------------------------------------
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1
