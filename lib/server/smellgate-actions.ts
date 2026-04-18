@@ -43,7 +43,12 @@ import {
 } from "../db/smellgate-queries";
 import type { DatabaseSchema } from "../db";
 import { countGraphemes } from "../graphemes";
-import { normalizeNotes, sanitizeFreeText } from "./write-guards";
+import {
+  normalizeNotes,
+  requireBoundedIdentifier,
+  requireReleaseYear,
+  sanitizeFreeText,
+} from "./write-guards";
 
 type Db = Kysely<DatabaseSchema>;
 
@@ -650,12 +655,18 @@ export async function commentOnReviewAction(
  * a curator-authored `perfumeSubmissionResolution`.
  *
  * Validation:
- * - `name`, `house` non-empty strings.
+ * - `name`, `house` non-empty strings, ≤ 200 graphemes each (issue
+ *   #134). Trimmed on the way in.
  * - `notes` non-empty array; each entry lowercased + trimmed and
  *   non-empty after trim. Per docs/lexicons.md: "Normalized lowercase."
  *   Duplicates are de-duplicated in order.
- * - `creator`, `description`, `rationale` (when present) non-empty.
- * - `releaseYear` (when present) a finite integer.
+ * - `creator` (when present) non-empty, ≤ 200 graphemes (issue #134).
+ * - `description`, `rationale` (when present) non-empty after HTML
+ *   sanitization; body-length is already capped at the lexicon's
+ *   `maxGraphemes` elsewhere.
+ * - `releaseYear` (when present) an integer in
+ *   `[1700, currentUtcYear + 1]` (issue #133). See
+ *   `write-guards.ts#requireReleaseYear` for the range justification.
  *
  * We intentionally do not touch the cache here. Unlike the
  * Phase 3.B actions we have no strongRef to validate against —
@@ -666,10 +677,11 @@ export async function submitPerfumeAction(
   session: OAuthSession,
   input: SubmitPerfumeInput,
 ): Promise<SubmitPerfumeResult> {
-  const name = requireString(input.name, "name");
-  if (name.trim().length === 0) bad("name must not be empty");
-  const house = requireString(input.house, "house");
-  if (house.trim().length === 0) bad("house must not be empty");
+  // Issue #134: bound short-identifier fields at 200 graphemes each.
+  // Same ceiling for name / house / creator — they share a failure mode
+  // (user pastes a wall of text into what should be a short label).
+  const name = requireBoundedIdentifier(input.name, "name");
+  const house = requireBoundedIdentifier(input.house, "house");
 
   // Canonical note normalization — NFC, trim, collapse whitespace,
   // lowercase, strip edge emoji, dedupe. Throws 400 on whitespace-only
@@ -678,18 +690,14 @@ export async function submitPerfumeAction(
 
   let creator: string | undefined;
   if (input.creator !== undefined) {
-    if (typeof input.creator !== "string" || input.creator.trim().length === 0) {
-      bad("creator must be a non-empty string when provided");
-    }
-    creator = input.creator;
+    creator = requireBoundedIdentifier(input.creator, "creator");
   }
 
+  // Issue #133: bound releaseYear to a plausible range. The lexicon
+  // just says "integer" which accepts 2099 silently.
   let releaseYear: number | undefined;
   if (input.releaseYear !== undefined) {
-    if (!isFiniteInt(input.releaseYear)) {
-      bad("releaseYear must be an integer when provided");
-    }
-    releaseYear = input.releaseYear;
+    releaseYear = requireReleaseYear(input.releaseYear);
   }
 
   // Issue #129: sanitize the submission description at the write edge.

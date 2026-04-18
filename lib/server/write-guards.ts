@@ -31,6 +31,7 @@
  */
 
 import sanitizeHtml from "sanitize-html";
+import { countGraphemes } from "../graphemes";
 import { ActionError } from "./smellgate-actions";
 
 // ---------------------------------------------------------------------------
@@ -183,4 +184,118 @@ export function sanitizeFreeText(raw: string, name: string): string {
     );
   }
   return normalized;
+}
+
+// ---------------------------------------------------------------------------
+// Short-identifier length bound (issue #134)
+// ---------------------------------------------------------------------------
+
+/**
+ * Maximum grapheme length for perfume `name`, `house`, and `creator`.
+ * Issue #134's repro used a 5000-char name; any cap well below that is
+ * a win. 200 graphemes is generous for real perfume metadata — the
+ * longest real-world house names ("Maison Francis Kurkdjian Paris")
+ * clear 30 chars comfortably, and even a flagship like
+ * "Aventus Cologne Absolu Pour Homme" sits under 40 — while still
+ * rejecting the obvious DoS / paste-error cases.
+ *
+ * We count graphemes (not UTF-16 code units) so emoji-heavy input
+ * lines up with the lexicon's `maxGraphemes` intuition; see
+ * `lib/graphemes.ts` for why.
+ */
+export const MAX_SHORT_IDENTIFIER_GRAPHEMES = 200;
+
+/**
+ * Enforce the short-identifier bound on a `name` / `house` / `creator`
+ * style field. Returns the trimmed string; throws `ActionError(400)`
+ * if the input is not a string, is empty after trimming, or exceeds
+ * the grapheme cap.
+ *
+ * We intentionally do not sanitize HTML here — these fields go through
+ * the catalog (house/creator turn into tag-page URL segments) and are
+ * displayed as plain text; stripping HTML on top of the length cap is
+ * a separate concern that would need a deliberate scope expansion.
+ *
+ * `fieldName` is only used in error messages.
+ */
+export function requireBoundedIdentifier(
+  raw: unknown,
+  fieldName: string,
+  max: number = MAX_SHORT_IDENTIFIER_GRAPHEMES,
+): string {
+  if (typeof raw !== "string") {
+    throw new ActionError(400, `${fieldName} must be a string`);
+  }
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) {
+    throw new ActionError(400, `${fieldName} must not be empty`);
+  }
+  if (countGraphemes(trimmed) > max) {
+    throw new ActionError(
+      400,
+      `${fieldName} must be ${max} graphemes or fewer`,
+    );
+  }
+  return trimmed;
+}
+
+// ---------------------------------------------------------------------------
+// releaseYear plausibility bound (issue #133)
+// ---------------------------------------------------------------------------
+
+/**
+ * Lower bound on `releaseYear`. 1700 is the conventional "modern
+ * perfumery" start line — Farina's Eau de Cologne (1709) is the
+ * oldest perfume still in continuous production, and anything earlier
+ * is a historical reconstruction rather than a shippable record. The
+ * bug-bash issue #133 suggested exactly this value.
+ */
+export const MIN_RELEASE_YEAR = 1700;
+
+/**
+ * Upper-bound offset from the current UTC year. +1 lets submitters
+ * pre-register a confirmed upcoming release (e.g. a perfume announced
+ * for next year's season) while rejecting clearly bogus "2099" claims.
+ */
+export const RELEASE_YEAR_FUTURE_OFFSET = 1;
+
+/**
+ * Compute the current maximum allowed `releaseYear`. Read from UTC so
+ * the bound doesn't flip under the submitter mid-request depending on
+ * server timezone, and so two servers on different TZs agree on the
+ * last-day-of-the-year edge.
+ *
+ * Exported for unit-testability (so tests can assert the helper picks
+ * up `Date.now()` via `vi.useFakeTimers()` without mocking the module).
+ */
+export function currentMaxReleaseYear(
+  now: Date = new Date(),
+): number {
+  return now.getUTCFullYear() + RELEASE_YEAR_FUTURE_OFFSET;
+}
+
+/**
+ * Validate and return a `releaseYear`. Throws `ActionError(400)` on
+ * non-integer, non-finite, below 1700, or above `currentYear + 1`.
+ *
+ * Plausibility range: `1700 <= year <= currentYear + 1`. See the
+ * MIN_RELEASE_YEAR and RELEASE_YEAR_FUTURE_OFFSET docs above for the
+ * justification.
+ */
+export function requireReleaseYear(raw: unknown): number {
+  if (
+    typeof raw !== "number" ||
+    !Number.isFinite(raw) ||
+    !Number.isInteger(raw)
+  ) {
+    throw new ActionError(400, "releaseYear must be an integer");
+  }
+  const max = currentMaxReleaseYear();
+  if (raw < MIN_RELEASE_YEAR || raw > max) {
+    throw new ActionError(
+      400,
+      `releaseYear must be between ${MIN_RELEASE_YEAR} and ${max}`,
+    );
+  }
+  return raw;
 }

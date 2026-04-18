@@ -1280,4 +1280,164 @@ describe("smellgate server actions (Phase 3.B)", () => {
       expect(c?.state).toBe("pending");
     }, 120_000);
   });
+
+  // -- submission bounds: name/house/creator length (#134), releaseYear (#133)
+  //
+  // These guards live at the write edge in
+  // `lib/server/smellgate-actions.ts#submitPerfumeAction` (backed by
+  // `lib/server/write-guards.ts`). The tests below make sure no record
+  // gets written to the PDS when the bound is violated, and that
+  // legitimate-looking values still succeed.
+
+  describe("submitPerfumeAction bounds (#133 / #134)", () => {
+    it("rejects a 5000-char name with 400 and writes nothing", async () => {
+      const beforeCount = await listRecordCount(
+        aliceSession,
+        alice.did,
+        "app.smellgate.perfumeSubmission",
+      );
+      await expect(
+        env.actions.submitPerfumeAction(env.db.getDb(), aliceSession, {
+          name: "A".repeat(5000),
+          house: "House",
+          notes: ["rose"],
+        }),
+      ).rejects.toMatchObject({ name: "ActionError", status: 400 });
+      const afterCount = await listRecordCount(
+        aliceSession,
+        alice.did,
+        "app.smellgate.perfumeSubmission",
+      );
+      expect(afterCount).toBe(beforeCount);
+    }, 30_000);
+
+    it("rejects a 5000-char house with 400", async () => {
+      await expect(
+        env.actions.submitPerfumeAction(env.db.getDb(), aliceSession, {
+          name: "Reasonable Name",
+          house: "H".repeat(5000),
+          notes: ["rose"],
+        }),
+      ).rejects.toMatchObject({ name: "ActionError", status: 400 });
+    }, 30_000);
+
+    it("rejects a 5000-char creator with 400", async () => {
+      await expect(
+        env.actions.submitPerfumeAction(env.db.getDb(), aliceSession, {
+          name: "Reasonable Name",
+          house: "Reasonable House",
+          creator: "C".repeat(5000),
+          notes: ["rose"],
+        }),
+      ).rejects.toMatchObject({ name: "ActionError", status: 400 });
+    }, 30_000);
+
+    it("accepts a name just under the 200-grapheme cap", async () => {
+      // 200 chars of a-z cycling: well below the cap and well above
+      // anything anyone would legitimately enter. Proves the bound
+      // is inclusive of the threshold.
+      const name = "a".repeat(200);
+      const result = await env.actions.submitPerfumeAction(
+        env.db.getDb(),
+        aliceSession,
+        {
+          name,
+          house: "Long Name House",
+          notes: ["rose"],
+        },
+      );
+      expect(result.uri).toMatch(/^at:\/\//);
+      expect(result.record.name).toBe(name);
+    }, 60_000);
+
+    it("rejects releaseYear: 2099 with 400 and writes nothing", async () => {
+      const beforeCount = await listRecordCount(
+        aliceSession,
+        alice.did,
+        "app.smellgate.perfumeSubmission",
+      );
+      await expect(
+        env.actions.submitPerfumeAction(env.db.getDb(), aliceSession, {
+          name: "Bad Year",
+          house: "Bad Year House",
+          notes: ["rose"],
+          releaseYear: 2099,
+        }),
+      ).rejects.toMatchObject({ name: "ActionError", status: 400 });
+      const afterCount = await listRecordCount(
+        aliceSession,
+        alice.did,
+        "app.smellgate.perfumeSubmission",
+      );
+      expect(afterCount).toBe(beforeCount);
+    }, 30_000);
+
+    it("rejects releaseYear: -500 with 400", async () => {
+      await expect(
+        env.actions.submitPerfumeAction(env.db.getDb(), aliceSession, {
+          name: "Historical Fantasy",
+          house: "Time Traveller Inc",
+          notes: ["rose"],
+          releaseYear: -500,
+        }),
+      ).rejects.toMatchObject({ name: "ActionError", status: 400 });
+    }, 30_000);
+
+    it("rejects releaseYear: 42 with 400", async () => {
+      // The issue body calls out `42` as a likely silent-acceptance
+      // case; lock it down explicitly so regressions on the lower
+      // bound don't slip through.
+      await expect(
+        env.actions.submitPerfumeAction(env.db.getDb(), aliceSession, {
+          name: "Roman Musk",
+          house: "Ancient House",
+          notes: ["rose"],
+          releaseYear: 42,
+        }),
+      ).rejects.toMatchObject({ name: "ActionError", status: 400 });
+    }, 30_000);
+
+    it("accepts releaseYear = currentYear + 1 (pre-announcement legal)", async () => {
+      const nextYear = new Date().getUTCFullYear() + 1;
+      const result = await env.actions.submitPerfumeAction(
+        env.db.getDb(),
+        aliceSession,
+        {
+          name: "Upcoming Release",
+          house: "Next Year Maison",
+          notes: ["rose"],
+          releaseYear: nextYear,
+        },
+      );
+      expect(result.uri).toMatch(/^at:\/\//);
+      expect(result.record.releaseYear).toBe(nextYear);
+    }, 60_000);
+
+    it("rejects releaseYear = currentYear + 2 with 400", async () => {
+      const tooFar = new Date().getUTCFullYear() + 2;
+      await expect(
+        env.actions.submitPerfumeAction(env.db.getDb(), aliceSession, {
+          name: "Too Far Future",
+          house: "Future House",
+          notes: ["rose"],
+          releaseYear: tooFar,
+        }),
+      ).rejects.toMatchObject({ name: "ActionError", status: 400 });
+    }, 30_000);
+
+    it("accepts releaseYear = 1700 (lower bound inclusive)", async () => {
+      const result = await env.actions.submitPerfumeAction(
+        env.db.getDb(),
+        aliceSession,
+        {
+          name: "Oldest Allowed",
+          house: "Heritage House",
+          notes: ["rose"],
+          releaseYear: 1700,
+        },
+      );
+      expect(result.uri).toMatch(/^at:\/\//);
+      expect(result.record.releaseYear).toBe(1700);
+    }, 60_000);
+  });
 });
