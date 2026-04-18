@@ -25,7 +25,7 @@ Required in production:
 - `PUBLIC_URL` — hosted app URL. Current production value is `https://smellgate.app` (custom domain, A/AAAA to Fly, Let's Encrypt via `fly certs add`). The app is also reachable at `https://smellgate.fly.dev`, but the OAuth client_id is keyed off `PUBLIC_URL`, so visiting via `.fly.dev` still authorizes as the `.app` client.
 - `PRIVATE_KEY` — ES256 JWK JSON string for OAuth client assertion signing. Generate locally with `pnpm gen-key`, then set as a Fly secret. Rotate only via redeploy; never set at runtime.
 - `SMELLGATE_CURATOR_DIDS` — comma-separated DIDs of curator accounts. Production value: `did:plc:sna3qx44beg2mb5fao44gsxh` (handle [`samantha.wiki`](https://bsky.app/profile/samantha.wiki)) — stopgap while `@smellgate.bsky.social` credentials are being recovered; will swap back once that account is reachable. A second curator DID for Sam will be appended once that account exists.
-- `TAP_URL` — internal URL of the `smellgate-tap` Fly app, used by `lib/db/queries.ts` `getAccountHandle` to resolve DIDs via `getTap().resolveDid(...)`. Production value is `http://smellgate-tap.flycast:2480` so traffic stays inside Fly's private network. See "Tap consumer hosting" below.
+- `TAP_URL` — internal URL of the `smellgate-tap` Fly app, used by `lib/db/queries.ts` `getAccountHandle` to resolve DIDs via the tap shim in `lib/tap/index.ts`. Production value is `http://smellgate-tap.internal:2480` so traffic stays inside Fly's private IPv6 network. `.flycast` was tried first but requires the target app's `fly.toml` to expose a public edge listener (`handlers = ["http"]`) to register the flycast address; our `tap/fly.toml` keeps `handlers = []` by design, so `.flycast` DNS never resolves and we use `.internal` (per-machine IPv6) instead. See "Tap consumer hosting" below.
 - `TAP_ADMIN_PASSWORD` — shared secret. indigo's upstream Tap binary gates three surfaces behind this single value by design — outbound webhook auth (Tap → main app), inbound admin API auth (main app → Tap for `resolveDid`), and `/repos/add` DID enrollment. Rotation is therefore atomic and a leak compromises all three. This is an upstream indigo constraint, not a smellgate choice. Must be set to a non-empty string in production: `instrumentation.ts` hard-fails on boot when `NODE_ENV=production` and the secret is empty or unset, so a mis-config surfaces as a failed deploy rather than a silently-unauthenticated webhook. Generate once with `openssl rand -hex 32` (see "Tap consumer hosting" for the one-shot setup) and set the same value on both apps.
 
 Image-baked (set in the `Dockerfile`'s runner stage, not a Fly secret):
@@ -122,7 +122,7 @@ No custom TypeScript consumer was written. An earlier design sketch had the cons
 
 - Crash isolation. A Tap OOM or firehose disconnect loop doesn't take down the user-facing Next.js app. With multi-process `fly.toml` they share a machine's memory budget and restart lifecycle.
 - Independent scaling. Tap holds the identity cache and cursor DB; the Next.js app is stateless-ish (SQLite cache can be rebuilt). They scale on different signals.
-- Simpler secrets. Tap needs `TAP_WEBHOOK_URL` (the main app's public URL) and `TAP_ADMIN_PASSWORD`. The main app needs `TAP_URL` (Tap's flycast URL) and the same `TAP_ADMIN_PASSWORD`. Splitting the apps makes "which secret lives where" obvious; co-located, both services would see both envs and it's easier to grow a cross-coupling.
+- Simpler secrets. Tap needs `TAP_WEBHOOK_URL` (the main app's public URL) and `TAP_ADMIN_PASSWORD`. The main app needs `TAP_URL` (Tap's `.internal` URL) and the same `TAP_ADMIN_PASSWORD`. Splitting the apps makes "which secret lives where" obvious; co-located, both services would see both envs and it's easier to grow a cross-coupling.
 - Cost. Each app is `shared-cpu-1x` / 512MB = within Fly's free allowance for two machines. The overhead is negligible.
 
 ### One-time Fly setup for smellgate-tap
@@ -148,11 +148,14 @@ flyctl secrets set --app smellgate-tap \
   TAP_ADMIN_PASSWORD="$TAP_ADMIN_PASSWORD"
 
 # 5. Set matching secrets on the main smellgate app so (a) its
-#    `getTap().resolveDid(...)` calls can reach Tap over flycast, and
-#    (b) its `/api/webhook` route verifies incoming POSTs against the
-#    same shared secret.
+#    tap `resolveDid(...)` calls can reach Tap over the `.internal`
+#    private IPv6 network, and (b) its `/api/webhook` route verifies
+#    incoming POSTs against the same shared secret.
+#    `.flycast` would be slightly nicer (load-balanced across
+#    machines) but requires Tap to expose a public HTTP edge listener
+#    to register a flycast address, which we deliberately don't do.
 flyctl secrets set --app smellgate \
-  TAP_URL=http://smellgate-tap.flycast:2480 \
+  TAP_URL=http://smellgate-tap.internal:2480 \
   TAP_ADMIN_PASSWORD="$TAP_ADMIN_PASSWORD"
 
 # 6. First deploy of smellgate-tap. Either push a commit that touches
