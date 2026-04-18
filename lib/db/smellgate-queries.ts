@@ -847,6 +847,52 @@ export async function getResolutionForSubmission(
 }
 
 /**
+ * List `app.smellgate.perfumeSubmission` rows authored by a given DID,
+ * newest first, with per-row note tags attached. Powers the public
+ * `/profile/<did>/submissions` page (issue #173). No auth required —
+ * submissions are atproto records, visible to anyone who can see the
+ * author's PDS; the smellgate cache just re-exposes them.
+ *
+ * Cache-only: unlike `listMySubmissionsAction` (which hits the
+ * authenticated user's PDS live so freshly-written records show up
+ * immediately), this function reads from the local read cache. A
+ * submission authored within the last few seconds may not yet have
+ * reached the cache via the firehose.
+ */
+export async function getSubmissionsForDid(
+  db: Db,
+  did: string,
+  opts?: PaginationOpts,
+): Promise<(SmellgatePerfumeSubmissionTable & { notes: string[] })[]> {
+  const { limit, offset } = paged(opts);
+  const rows = await db
+    .selectFrom("smellgate_perfume_submission")
+    .selectAll()
+    .where("author_did", "=", did)
+    .orderBy("indexed_at", "desc")
+    .limit(limit)
+    .offset(offset)
+    .execute();
+  if (rows.length === 0) return [];
+  const noteRows = await db
+    .selectFrom("smellgate_perfume_submission_note")
+    .select(["submission_uri", "note"])
+    .where(
+      "submission_uri",
+      "in",
+      rows.map((r) => r.uri),
+    )
+    .execute();
+  const notesByUri = new Map<string, string[]>();
+  for (const n of noteRows) {
+    const list = notesByUri.get(n.submission_uri) ?? [];
+    list.push(n.note);
+    notesByUri.set(n.submission_uri, list);
+  }
+  return rows.map((r) => ({ ...r, notes: notesByUri.get(r.uri) ?? [] }));
+}
+
+/**
  * Fetch a single submission row by URI, with its note tags attached.
  * Used by the curator approve flow when constructing the canonical
  * perfume record from the submission's fields.
