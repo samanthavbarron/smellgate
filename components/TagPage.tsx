@@ -11,6 +11,22 @@
 import type { PerfumeWithNotes } from "@/lib/db/smellgate-queries";
 import { PerfumeTile } from "@/components/PerfumeTile";
 
+/**
+ * Upper bound on the tag `value` we'll render in the H1. The route
+ * segment accepts anything a URL path can carry, so a pasted 1200-
+ * character string would otherwise blow past the `max-w-5xl` layout
+ * container (issue #179). 200 graphemes matches the lexicon's
+ * `maxGraphemes` bound on `perfume.name` / `house` / `creator` — a
+ * real value never exceeds this, and anything that does is either a
+ * typo or an attacker trying to break layout.
+ */
+const MAX_TAG_VALUE_DISPLAY_LENGTH = 200;
+
+function truncateForDisplay(value: string): string {
+  if (value.length <= MAX_TAG_VALUE_DISPLAY_LENGTH) return value;
+  return value.slice(0, MAX_TAG_VALUE_DISPLAY_LENGTH) + "…";
+}
+
 export function TagPage({
   kindLabel,
   value,
@@ -35,8 +51,8 @@ export function TagPage({
         <div className="text-xs uppercase tracking-wide text-zinc-500 dark:text-zinc-500">
           {kindLabel}
         </div>
-        <h1 className="mt-1 text-4xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-100">
-          {value}
+        <h1 className="mt-1 break-words text-4xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-100">
+          {truncateForDisplay(value)}
         </h1>
         <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
           {perfumes.length === 0
