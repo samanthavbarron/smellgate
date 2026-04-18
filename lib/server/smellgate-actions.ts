@@ -38,6 +38,7 @@ import { AtUri } from "@atproto/syntax";
 import type { Kysely } from "kysely";
 import * as app from "../lexicons/app";
 import {
+  findCanonicalByNameHouse,
   getPerfumeByUri,
   getResolutionForSubmission,
 } from "../db/smellgate-queries";
@@ -194,6 +195,20 @@ export interface ActionResult {
 }
 
 /**
+ * A canonical perfume match surfaced to the submitter as a potential
+ * duplicate (issue #127). Name + house both match the submission
+ * case-insensitively. Enough fields for the composer to render a
+ * "this may already be in the catalog" line with a link.
+ */
+export interface PotentialDuplicate {
+  uri: string;
+  name: string;
+  house: string;
+  creator?: string;
+  releaseYear?: number;
+}
+
+/**
  * Result shape for `submitPerfumeAction`. Includes the normalized
  * `notes[]` so the UI can show the submitter what got stored — per
  * issue #128, silent normalization without echo is almost as bad as
@@ -206,6 +221,14 @@ export interface ActionResult {
  * submission from the same submitter (same name + house, case-folded).
  * No new record was written; `uri` points at the existing one. See
  * issue #126.
+ *
+ * `potentialDuplicates` (issue #127) is present ONLY when the catalog
+ * already contains one or more canonical perfumes whose (name, house)
+ * match the submission case-insensitively. The submission is still
+ * written — we warn rather than reject, because the user may
+ * legitimately be filing a variant for curator triage. The field is
+ * omitted when there are no matches (keeps the common-case response
+ * clean).
  */
 export interface SubmitPerfumeResult {
   uri: string;
@@ -228,6 +251,7 @@ export interface SubmitPerfumeResult {
     description?: string;
     rationale?: string;
   };
+  potentialDuplicates?: PotentialDuplicate[];
 }
 
 /**
@@ -882,6 +906,30 @@ export async function submitPerfumeAction(
     rationale = sanitizeFreeText(input.rationale, "rationale");
   }
 
+  // Issue #127: catalog duplicate-detection. Before writing, check the
+  // cache for canonical perfumes whose (name, house) case-fold to the
+  // same pair. We surface up to 3 matches in the response envelope so
+  // the composer UI can warn the submitter. This is warn-not-reject:
+  // the user may legitimately be filing a variant (different perfumer,
+  // different release year) for the curator to resolve via
+  // `markDuplicate`. Cache-lag is fine here — a canonical perfume that
+  // was approved seconds ago may not be in the cache yet, but a
+  // recently-approved duplicate is exactly the race the curator flow
+  // is built to tolerate, not something this UI warning must catch.
+  //
+  // Computed once using the normalized name/house (post-trim) so the
+  // same set of matches is attached to both the idempotent-return
+  // branch and the fresh-write branch below.
+  const potentialDuplicates = (
+    await findCanonicalByNameHouse(db, name, house, 3)
+  ).map((p) => ({
+    uri: p.uri,
+    name: p.name,
+    house: p.house,
+    ...(p.creator ? { creator: p.creator } : {}),
+    ...(p.release_year != null ? { releaseYear: p.release_year } : {}),
+  }));
+
   const lexClient = new Client(session);
 
   // Issue #126: idempotent duplicate-submission guard. Before creating
@@ -988,6 +1036,9 @@ export async function submitPerfumeAction(
               ? { rationale: v.rationale }
               : {}),
           },
+          ...(potentialDuplicates.length > 0
+            ? { potentialDuplicates }
+            : {}),
         };
       }
     }
@@ -1031,6 +1082,7 @@ export async function submitPerfumeAction(
       description,
       rationale,
     },
+    ...(potentialDuplicates.length > 0 ? { potentialDuplicates } : {}),
   };
 }
 

@@ -409,6 +409,72 @@ export async function searchPerfumes(
   return attachNotes(db, perfumes);
 }
 
+/**
+ * Find canonical perfumes whose (name, house) match the supplied pair
+ * case-insensitively. Used by `submitPerfumeAction` to surface
+ * potential duplicates at submit time without rejecting the submission
+ * — the user may legitimately want to file a "same name, same house,
+ * different perfumer / release year" variant that only the curator can
+ * resolve via `markDuplicate` (issue #127).
+ *
+ * Matching rules:
+ *
+ * - Both name AND house must match. Name-only or house-only matches
+ *   are not candidates — they'd flood the UI with false positives (a
+ *   house with 40 perfumes would match every unrelated submission).
+ * - Case-insensitive via `LOWER(col) = LOWER(?)`. We don't use LIKE
+ *   here because we want exact-string equality, not substring —
+ *   "Vespertine EDP" is NOT the same perfume as "Vespertine" and we
+ *   shouldn't pretend otherwise.
+ * - Both sides trimmed before compare — inputs via JS `.trim()`,
+ *   stored columns via SQL `trim(col)`. The Tap dispatcher writes the
+ *   canonical record's `name` / `house` through as-authored, so a
+ *   curator-approved perfume with trailing whitespace in the cache
+ *   would otherwise miss a legitimate match. NFC normalization is
+ *   skipped in v1 — the existing seed catalog + the
+ *   `requireBoundedIdentifier` write guard on the inbound side
+ *   already produce consistent shapes, so unicode drift is a
+ *   theoretical rather than observed risk.
+ * - `name`/`house` are short identifier strings (`requireBoundedIdentifier`
+ *   bounds them at 200 graphemes) so the table-scan cost is fine at
+ *   the current catalog size (75 seeded + slow organic growth). A
+ *   covering index on `(LOWER(name), LOWER(house))` would be the scale
+ *   move; not needed yet.
+ * - Caller-facing result cap: callers pass `limit` (default 3) so we
+ *   never send back a flood. The return is `PerfumeWithNotes[]` for
+ *   parity with every other perfume-returning query.
+ * - Sort: `indexed_at DESC` with `uri DESC` as the total-order
+ *   tiebreaker (same convention as `getRecentPerfumes`, PR #154). The
+ *   "newest canonical first" ordering is what the submit-time dup UX
+ *   wants — if two canonicals exist with the same name+house (rare,
+ *   but possible after a curator approves a variant), surface the most
+ *   recently indexed one first.
+ */
+export async function findCanonicalByNameHouse(
+  db: Db,
+  name: string,
+  house: string,
+  limit: number = 3,
+): Promise<PerfumeWithNotes[]> {
+  const n = name.trim();
+  const h = house.trim();
+  if (n.length === 0 || h.length === 0) return [];
+
+  const perfumes = await db
+    .selectFrom("smellgate_perfume")
+    .selectAll()
+    .where(
+      (eb) =>
+        sql<boolean>`lower(trim(${eb.ref("smellgate_perfume.name")})) = lower(${n})
+          and lower(trim(${eb.ref("smellgate_perfume.house")})) = lower(${h})`,
+    )
+    .orderBy("indexed_at", "desc")
+    .orderBy("uri", "desc")
+    .limit(limit)
+    .execute();
+  return attachNotes(db, perfumes);
+}
+
 export async function getPerfumesByCreator(
   db: Db,
   creator: string,

@@ -1387,6 +1387,86 @@ describe("smellgate server actions (Phase 3.B)", () => {
     }, 120_000);
   });
 
+  // -- catalog duplicate-detection at submit time (#127) -------------------
+
+  describe("submitPerfumeAction catalog duplicate-detection (#127)", () => {
+    it("attaches potentialDuplicates when a canonical perfume matches name+house", async () => {
+      // Seed a canonical via the curator-authored path (a real
+      // `app.smellgate.perfume` in the cache, not a submission).
+      // `seedPerfume` uses "Test House" as the house value — fine for
+      // the match; the dup-detection logic doesn't care about the
+      // specific string, only that the submission matches.
+      const canonicalUri = await seedPerfume(env, "Vespertine");
+
+      const result = await env.actions.submitPerfumeAction(
+        env.db.getDb(),
+        aliceSession,
+        {
+          name: "Vespertine",
+          house: "Test House",
+          notes: ["iris", "ambergris"],
+        },
+      );
+      // Submission was still written (warn-not-reject).
+      expect(result.status).toBe("pending_review");
+      expect(result.uri).toMatch(/perfumeSubmission/);
+      // The canonical match is surfaced.
+      expect(result.potentialDuplicates).toBeDefined();
+      expect(result.potentialDuplicates).toHaveLength(1);
+      expect(result.potentialDuplicates![0].name).toBe("Vespertine");
+      expect(result.potentialDuplicates![0].house).toBe("Test House");
+      expect(result.potentialDuplicates![0].uri).toBe(canonicalUri);
+    }, 60_000);
+
+    it("matches case-insensitively on both name and house", async () => {
+      const canonicalUri = await seedPerfume(env, "Vespertine");
+      const result = await env.actions.submitPerfumeAction(
+        env.db.getDb(),
+        aliceSession,
+        {
+          name: "VESPERTINE",
+          house: "test HOUSE",
+          notes: ["iris"],
+        },
+      );
+      expect(result.potentialDuplicates).toBeDefined();
+      expect(result.potentialDuplicates![0].uri).toBe(canonicalUri);
+    }, 60_000);
+
+    it("omits potentialDuplicates entirely when no canonical matches", async () => {
+      // No canonical seeded — the cache has no matching row.
+      const result = await env.actions.submitPerfumeAction(
+        env.db.getDb(),
+        aliceSession,
+        {
+          name: "Totally Unique Name",
+          house: "Totally Unique House",
+          notes: ["xyz"],
+        },
+      );
+      expect(result.status).toBe("pending_review");
+      expect(
+        Object.prototype.hasOwnProperty.call(result, "potentialDuplicates"),
+      ).toBe(false);
+    }, 60_000);
+
+    it("does NOT match when name is the same but house differs", async () => {
+      await seedPerfume(env, "Vespertine");
+      const result = await env.actions.submitPerfumeAction(
+        env.db.getDb(),
+        aliceSession,
+        {
+          name: "Vespertine",
+          house: "A Completely Different House",
+          notes: ["xyz"],
+        },
+      );
+      expect(
+        Object.prototype.hasOwnProperty.call(result, "potentialDuplicates"),
+      ).toBe(false);
+    }, 60_000);
+  });
+
   // -- response-shape sweep: listMySubmissionsAction (#131) ----------------
 
   describe("listMySubmissionsAction", () => {
