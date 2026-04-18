@@ -14,10 +14,10 @@
  * return the same decorated shape. We consume the decorated value
  * here and hand it straight to `<SubmissionCard>`.
  *
- * The duplicate-picker is a plain text input where the curator pastes
- * an AT-URI. Real search integration is deferred to a follow-up on
- * top of Phase 4.F's `searchPerfumes`. See PR body for the follow-up
- * issue link.
+ * The duplicate-picker inline typeahead (issue #139) lives inside
+ * `<SubmissionCard>` — on mode enter it fetches top-5 canonical
+ * candidates from `/api/smellgate/curator/search` and renders them as
+ * clickable rows above the hand-paste URI input.
  */
 import { getDb } from "@/lib/db";
 import { getSession } from "@/lib/auth/session";

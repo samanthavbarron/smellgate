@@ -10,10 +10,21 @@
  * block directly under the action row. Per docs/ui.md + hard
  * constraints in the issue, no new dependencies.
  *
- * The duplicate picker is a plain text input where the curator pastes
- * an AT-URI. Real search-powered picking is deferred: Phase 4.F's
- * `searchPerfumes` query is landing in parallel, and a follow-up
- * issue will wire it in.
+ * Issue #139: the duplicate picker is now an inline typeahead. On
+ * entering `mode === "duplicate"` the card fires a single GET against
+ * `/api/smellgate/curator/search?q=<submission.name>` and renders the
+ * top 5 canonical-perfume matches as clickable rows above the URI
+ * input. Click = fill the URI input. The input still accepts free-form
+ * AT-URI, so a curator can paste a URI the search didn't surface.
+ *
+ * Data-flow choice (b) — lazy client-side fetch — over (a) pre-computed
+ * per-submission candidates: `listPendingSubmissionsAction` returns
+ * every pending row, and pre-running `searchPerfumes` for each would
+ * waste work on submissions the curator never inspects. The query is
+ * bounded (top-5 over a substring LIKE), fires once per mode enter, is
+ * curator-gated, and aborts on mode exit. No debounce because the
+ * query string is derived from the submission — not typed — so the
+ * fetch fires exactly once per open.
  *
  * Issue #137: after a successful action, the card renders an inline
  * confirmation block instead of silently vanishing on `router.refresh()`.
@@ -25,8 +36,13 @@
  * blinked doesn't lose the reference.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+  type CandidatePerfume,
+  buildCandidateQuery,
+  formatCandidateRow,
+} from "./candidate-format";
 
 export interface SubmissionCardData {
   uri: string;
@@ -68,6 +84,52 @@ export function SubmissionCard({
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
   const [rejectNote, setRejectNote] = useState("");
   const [canonicalUri, setCanonicalUri] = useState("");
+
+  // Typeahead state (issue #139). `candidates === null` means "haven't
+  // fetched yet this mode-enter"; `[]` means "fetched, zero hits".
+  const [candidates, setCandidates] = useState<CandidatePerfume[] | null>(null);
+  const [candidatesLoading, setCandidatesLoading] = useState(false);
+
+  // Fetch the top-5 canonical candidates whenever the curator enters
+  // `mode === "duplicate"`. Aborts on mode change / unmount so a stale
+  // response can't land after the curator has already cancelled.
+  useEffect(() => {
+    if (mode !== "duplicate") {
+      setCandidates(null);
+      setCandidatesLoading(false);
+      return;
+    }
+    const q = buildCandidateQuery({
+      name: submission.name,
+      house: submission.house,
+    });
+    if (q === null) {
+      // Defensive: submission has no name/house — skip the fetch and
+      // let the curator hand-paste.
+      setCandidates([]);
+      setCandidatesLoading(false);
+      return;
+    }
+    const controller = new AbortController();
+    setCandidatesLoading(true);
+    setCandidates(null);
+    fetch(
+      `/api/smellgate/curator/search?q=${encodeURIComponent(q)}&limit=5`,
+      { signal: controller.signal },
+    )
+      .then((res) => (res.ok ? res.json() : Promise.reject(res)))
+      .then((data: { candidates?: CandidatePerfume[] }) => {
+        setCandidates(Array.isArray(data.candidates) ? data.candidates : []);
+        setCandidatesLoading(false);
+      })
+      .catch((err: unknown) => {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        // Non-fatal: leave the hand-paste input usable.
+        setCandidates([]);
+        setCandidatesLoading(false);
+      });
+    return () => controller.abort();
+  }, [mode, submission.name, submission.house]);
 
   async function post<T extends Record<string, unknown>>(
     path: string,
@@ -295,9 +357,15 @@ export function SubmissionCard({
             placeholder="at://did:plc:.../app.smellgate.perfume/..."
             className="block w-full rounded-md border border-zinc-300 bg-white px-2 py-1 font-mono text-xs text-zinc-900 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
           />
+          <CandidateList
+            loading={candidatesLoading}
+            candidates={candidates}
+            selectedUri={canonicalUri.trim()}
+            onPick={(uri) => setCanonicalUri(uri)}
+          />
           <p className="text-xs text-zinc-500 dark:text-zinc-500">
-            Paste the AT-URI of the existing canonical perfume. Search-powered
-            picking is a follow-up on top of Phase 4.F.
+            Click a match above, or paste the AT-URI of the existing
+            canonical perfume.
           </p>
           <div className="flex gap-2">
             <button
@@ -326,6 +394,72 @@ export function SubmissionCard({
         </p>
       )}
     </article>
+  );
+}
+
+/**
+ * Dropdown list of canonical-perfume candidates (issue #139). Rendered
+ * between the URI input and its helper hint in the duplicate flow.
+ *
+ * Three visual states:
+ *   - loading: subtle "Searching…" row while the fetch is in-flight.
+ *   - empty:   "(no matches; paste URI manually)" hint, zinc neutral.
+ *   - rows:    up to 5 clickable rows; each row shows the compact
+ *              "name — house (creator, year)" label from
+ *              `formatCandidateRow`. Click fills the URI input on the
+ *              parent component via `onPick`. The currently-selected
+ *              row is visually emphasized so a curator who then pasted
+ *              a different URI can see at a glance which row (if any)
+ *              corresponds to what's in the input.
+ */
+function CandidateList({
+  loading,
+  candidates,
+  selectedUri,
+  onPick,
+}: {
+  loading: boolean;
+  candidates: CandidatePerfume[] | null;
+  selectedUri: string;
+  onPick: (uri: string) => void;
+}) {
+  if (loading || candidates === null) {
+    return (
+      <div className="text-xs text-zinc-500 dark:text-zinc-500">Searching…</div>
+    );
+  }
+  if (candidates.length === 0) {
+    return (
+      <div className="text-xs text-zinc-500 dark:text-zinc-500">
+        (no matches; paste URI manually)
+      </div>
+    );
+  }
+  return (
+    <ul
+      data-smellgate-duplicate-candidates
+      className="divide-y divide-zinc-200 rounded-md border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800"
+    >
+      {candidates.map((c) => {
+        const isSelected = selectedUri === c.uri;
+        return (
+          <li key={c.uri}>
+            <button
+              type="button"
+              data-smellgate-candidate={c.uri}
+              onClick={() => onPick(c.uri)}
+              className={
+                isSelected
+                  ? "block w-full px-3 py-1.5 text-left text-sm font-medium text-amber-700 hover:bg-zinc-100 dark:text-amber-400 dark:hover:bg-zinc-800"
+                  : "block w-full px-3 py-1.5 text-left text-sm text-zinc-700 hover:bg-zinc-100 hover:text-amber-700 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-amber-400"
+              }
+            >
+              {formatCandidateRow(c)}
+            </button>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
