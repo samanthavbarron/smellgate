@@ -97,10 +97,15 @@ export async function getAccountHandle(did: string): Promise<string | null> {
 
 /**
  * Populate the `account` cache with a handle resolved outside Tap's
- * normal ingestion path. `active` defaults to 1 — we only have positive
- * signal that the DID resolves; Tap's `#account` events will rewrite
- * this row with the authoritative value when it sees them. Best-effort:
- * a DB write failure must not block the page render.
+ * normal ingestion path. `active` defaults to 1 on INSERT — we have
+ * positive signal that the DID resolves. On UPDATE we only touch
+ * `handle`: Tap's `#account` firehose events are the authoritative
+ * source of `active`, and a PLC-resolvable DID doesn't mean the
+ * account is currently active (a bsky-deactivated account whose PLC
+ * doc still resolves would otherwise have its `active=0` flipped
+ * back to 1 on every profile render until the next `#account` event
+ * — issue #162). Best-effort: a DB write failure must not block a
+ * page render.
  */
 async function writeThroughAccountHandle(
   did: string,
@@ -110,9 +115,7 @@ async function writeThroughAccountHandle(
     await getDb()
       .insertInto("account")
       .values({ did, handle, active: 1 })
-      .onConflict((oc) =>
-        oc.column("did").doUpdateSet({ handle, active: 1 }),
-      )
+      .onConflict((oc) => oc.column("did").doUpdateSet({ handle }))
       .execute();
   } catch {
     // Don't crash a page render on a cache-write miss. The next visit
