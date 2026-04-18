@@ -53,7 +53,7 @@ export default async function CuratorPage() {
     <div className="space-y-8">
       <section>
         <h1 className="text-4xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-100">
-          Curator Dashboard
+          Curator dashboard
         </h1>
         <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
           Pending perfume submissions awaiting review. Oldest first.

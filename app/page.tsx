@@ -72,9 +72,7 @@ export default async function Home() {
           </span>
         </div>
         {perfumes.length === 0 ? (
-          <EmptyState>
-            No perfumes have been indexed yet. Check back soon.
-          </EmptyState>
+          <EmptyState>No perfumes yet. Check back soon.</EmptyState>
         ) : (
           <>
             <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -107,8 +105,7 @@ export default async function Home() {
         </div>
         {reviews.length === 0 ? (
           <EmptyState>
-            Nobody has posted a review yet. Reviews live in users&rsquo; PDSs and
-            are indexed into the local cache when the firehose sees them.
+            No reviews yet. Be the first to post one after signing in.
           </EmptyState>
         ) : (
           <ul className="space-y-3">
