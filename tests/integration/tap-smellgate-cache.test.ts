@@ -36,6 +36,10 @@ import type { RecordEvent } from "@atproto/tap";
 // so any `did:<method>:<id>` shape works.
 const CURATOR_DID = "did:plc:alicecurator01";
 const USER_DID = "did:plc:bobuser01";
+// Separate author DID used for records the USER_DID votes / comments on
+// so the dispatcher's self-vote guard (#191) doesn't fire against
+// happy-path tests.
+const OTHER_USER_DID = "did:plc:caroluser02";
 
 const NSID = {
   perfume: "app.smellgate.perfume",
@@ -143,8 +147,11 @@ function strongRef(uri: string, cid: string = FAKE_CID2) {
 // Any plausible perfume AT-URI. The dispatcher does not resolve strong
 // refs to other rows; they are stored as opaque (uri, cid) pairs.
 const PERFUME_REF_URI = `at://${CURATOR_DID}/app.smellgate.perfume/3jzfcijpj2zref`;
-const DESCRIPTION_REF_URI = `at://${USER_DID}/app.smellgate.description/3jzfcijpj2zdref`;
-const REVIEW_REF_URI = `at://${USER_DID}/app.smellgate.review/3jzfcijpj2zrref`;
+// Authored by a different user so USER_DID voting / commenting against
+// it is not a self-vote / self-comment under the dispatcher guards
+// (issues #191, #195).
+const DESCRIPTION_REF_URI = `at://${OTHER_USER_DID}/app.smellgate.description/3jzfcijpj2zdref`;
+const REVIEW_REF_URI = `at://${OTHER_USER_DID}/app.smellgate.review/3jzfcijpj2zrref`;
 const SUBMISSION_REF_URI = `at://${USER_DID}/app.smellgate.perfumeSubmission/3jzfcijpj2zsref`;
 
 // -------------------------------------------------------------------------

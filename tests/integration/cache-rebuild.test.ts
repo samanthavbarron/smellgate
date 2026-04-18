@@ -264,7 +264,12 @@ describe("cache rebuild from network", () => {
         },
       );
 
-      const vote = await createRecord(pds, user, "app.smellgate.vote", {
+      // Vote is cast by the curator account against the user's
+      // description so the dispatcher's self-vote guard (#191) doesn't
+      // drop it. The curator gate does not apply to votes — any
+      // authenticated author can vote on any other author's
+      // description.
+      const vote = await createRecord(pds, curator, "app.smellgate.vote", {
         $type: "app.smellgate.vote",
         subject: { uri: description.uri, cid: description.cid },
         direction: "up",

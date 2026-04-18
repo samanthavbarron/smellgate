@@ -41,6 +41,10 @@ import { Kysely } from "kysely";
 import * as smellgate from "../lexicons/app/smellgate";
 import { isCurator } from "../curators";
 import type { DatabaseSchema } from "../db";
+import { countGraphemes } from "../graphemes";
+import commentLexicon from "../../lexicons/app/smellgate/comment.json";
+import descriptionLexicon from "../../lexicons/app/smellgate/description.json";
+import reviewLexicon from "../../lexicons/app/smellgate/review.json";
 
 // ---------------------------------------------------------------------------
 // Collection NSIDs (single source of truth). Mirrors the generated
@@ -65,6 +69,31 @@ const VOTE_DIRECTIONS = new Set(["up", "down"]);
 const RESOLUTION_DECISIONS = new Set(["approved", "rejected", "duplicate"]);
 
 // ---------------------------------------------------------------------------
+// Body-length bounds for free-text fields (issues #189, #193, #196).
+//
+// These are defense-in-depth at the dispatcher layer mirroring the
+// server-action guards in `lib/server/smellgate-actions.ts`. We read
+// the `maxGraphemes` bound out of the lexicon JSON at module-load so
+// the number follows the lexicon rather than getting out of sync with
+// a hardcoded literal.
+//
+// `$safeParse` already enforces `maxGraphemes` and `minLength: 1`, but
+// whitespace-only bodies pass `minLength: 1` (graphemes, not
+// non-whitespace characters — see #185/#193/#196). We add an explicit
+// trim-then-minLength check here so direct PDS writes matching the
+// lexical bound but visually empty get dropped.
+// ---------------------------------------------------------------------------
+const REVIEW_BODY_MAX_GRAPHEMES: number = (
+  reviewLexicon as { defs: { main: { record: { properties: { body: { maxGraphemes: number } } } } } }
+).defs.main.record.properties.body.maxGraphemes;
+const DESCRIPTION_BODY_MAX_GRAPHEMES: number = (
+  descriptionLexicon as { defs: { main: { record: { properties: { body: { maxGraphemes: number } } } } } }
+).defs.main.record.properties.body.maxGraphemes;
+const COMMENT_BODY_MAX_GRAPHEMES: number = (
+  commentLexicon as { defs: { main: { record: { properties: { body: { maxGraphemes: number } } } } } }
+).defs.main.record.properties.body.maxGraphemes;
+
+// ---------------------------------------------------------------------------
 // Drop-site observability (#47).
 //
 // The dispatcher silently drops records that fail a gate: curator-only
@@ -85,7 +114,18 @@ const RESOLUTION_DECISIONS = new Set(["approved", "rejected", "duplicate"]);
 type DropReason =
   | "curator_gate"
   | "lex_validate"
-  | "closed_enum";
+  | "closed_enum"
+  // Strongref points at a record in the wrong collection. E.g. a
+  // `shelfItem.perfume` pointing at an `app.smellgate.perfumeSubmission`,
+  // or a `vote.subject` pointing at a perfume rather than a description.
+  // See issues #168, #180, #183, #194, #195.
+  | "bad_collection_ref"
+  // `body` is empty or whitespace-only after trim (issues #185, #193, #196),
+  // or exceeds `maxGraphemes` (issue #189).
+  | "bad_body"
+  // Self-vote: author DID equals the description author DID. Mirrors the
+  // server-action guard in `voteOnDescriptionAction` (issue #191).
+  | "self_vote";
 
 function logDrop(
   reason: DropReason,
@@ -369,6 +409,18 @@ async function handleShelfItem(
   }
   const record = result.value;
 
+  // Issue #168: `shelfItem.perfume` must point at an
+  // `app.smellgate.perfume`, not a submission or any other record.
+  const perfumeCol = atUriCollection(record.perfume.uri);
+  if (perfumeCol !== SMELLGATE_COLLECTIONS.perfume) {
+    logDrop("bad_collection_ref", evt, uri, {
+      field: "perfume.uri",
+      expected: SMELLGATE_COLLECTIONS.perfume,
+      got: perfumeCol,
+    });
+    return;
+  }
+
   await db
     .insertInto("smellgate_shelf_item")
     .values({
@@ -413,6 +465,30 @@ async function handleReview(
     return;
   }
   const record = result.value;
+
+  // Issue #194: `review.perfume` must point at an app.smellgate.perfume.
+  const perfumeCol = atUriCollection(record.perfume.uri);
+  if (perfumeCol !== SMELLGATE_COLLECTIONS.perfume) {
+    logDrop("bad_collection_ref", evt, uri, {
+      field: "perfume.uri",
+      expected: SMELLGATE_COLLECTIONS.perfume,
+      got: perfumeCol,
+    });
+    return;
+  }
+
+  // Issue #193: trim-then-minLength and maxGraphemes gate. The lexicon's
+  // `minLength: 1` passes whitespace-only bodies and the `maxGraphemes`
+  // check is already in `$safeParse`, but an explicit drop here gives a
+  // cleaner debug log and keeps the dispatcher symmetrical with the
+  // server-action guard in `postReviewAction`.
+  if (!validateBody(record.body, REVIEW_BODY_MAX_GRAPHEMES).ok) {
+    logDrop("bad_body", evt, uri, {
+      field: "body",
+      reason: "empty-after-trim or over maxGraphemes",
+    });
+    return;
+  }
 
   await db
     .insertInto("smellgate_review")
@@ -459,6 +535,26 @@ async function handleDescription(
   }
   const record = result.value;
 
+  // Issue #180: `description.perfume` must point at an app.smellgate.perfume.
+  const perfumeCol = atUriCollection(record.perfume.uri);
+  if (perfumeCol !== SMELLGATE_COLLECTIONS.perfume) {
+    logDrop("bad_collection_ref", evt, uri, {
+      field: "perfume.uri",
+      expected: SMELLGATE_COLLECTIONS.perfume,
+      got: perfumeCol,
+    });
+    return;
+  }
+
+  // Issues #185, #189: empty-after-trim or over maxGraphemes.
+  if (!validateBody(record.body, DESCRIPTION_BODY_MAX_GRAPHEMES).ok) {
+    logDrop("bad_body", evt, uri, {
+      field: "body",
+      reason: "empty-after-trim or over maxGraphemes",
+    });
+    return;
+  }
+
   await db
     .insertInto("smellgate_description")
     .values({
@@ -504,20 +600,52 @@ async function handleVote(
     return;
   }
 
-  await db
-    .insertInto("smellgate_vote")
-    .values({
-      uri,
-      cid: evt.cid!,
-      author_did: evt.did,
-      indexed_at: indexedAt,
-      subject_uri: record.subject.uri,
-      subject_cid: record.subject.cid,
-      direction: record.direction as "up" | "down",
-      created_at: record.createdAt,
-    })
-    .onConflict((oc) =>
-      oc.column("uri").doUpdateSet({
+  // Issue #183: `vote.subject` must point at an app.smellgate.description.
+  const subjectCol = atUriCollection(record.subject.uri);
+  if (subjectCol !== SMELLGATE_COLLECTIONS.description) {
+    logDrop("bad_collection_ref", evt, uri, {
+      field: "subject.uri",
+      expected: SMELLGATE_COLLECTIONS.description,
+      got: subjectCol,
+    });
+    return;
+  }
+
+  // Issue #191a: self-vote guard. The description URI's authority is
+  // its author DID (at://<did>/...), so we can derive the author
+  // without a DB round-trip. If the voter is voting on their own
+  // description, drop. Mirrors the server-action guard in
+  // `voteOnDescriptionAction`.
+  const subjectAuthor = atUriAuthority(record.subject.uri);
+  if (subjectAuthor !== null && subjectAuthor === evt.did) {
+    logDrop("self_vote", evt, uri, {
+      subject: record.subject.uri,
+    });
+    return;
+  }
+
+  // Issue #191b: duplicate-vote cleanup at index time. The
+  // server-action `voteOnDescriptionAction` deletes any prior vote
+  // records from the same author on the same subject before writing
+  // the new one. Direct PDS writes bypass that. Here, when a vote
+  // arrives, remove any prior row in the cache keyed by (author_did,
+  // subject_uri) before upserting the new one. The user's PDS still
+  // has the prior vote records — this only keeps the cache clean so
+  // `loadVoteTallies` doesn't have to rely solely on indexed_at
+  // dedupe. Wrap in a transaction so the delete and upsert commit
+  // atomically.
+  await db.transaction().execute(async (tx) => {
+    await tx
+      .deleteFrom("smellgate_vote")
+      .where("author_did", "=", evt.did)
+      .where("subject_uri", "=", record.subject.uri)
+      .where("uri", "!=", uri)
+      .execute();
+
+    await tx
+      .insertInto("smellgate_vote")
+      .values({
+        uri,
         cid: evt.cid!,
         author_did: evt.did,
         indexed_at: indexedAt,
@@ -525,9 +653,20 @@ async function handleVote(
         subject_cid: record.subject.cid,
         direction: record.direction as "up" | "down",
         created_at: record.createdAt,
-      }),
-    )
-    .execute();
+      })
+      .onConflict((oc) =>
+        oc.column("uri").doUpdateSet({
+          cid: evt.cid!,
+          author_did: evt.did,
+          indexed_at: indexedAt,
+          subject_uri: record.subject.uri,
+          subject_cid: record.subject.cid,
+          direction: record.direction as "up" | "down",
+          created_at: record.createdAt,
+        }),
+      )
+      .execute();
+  });
 }
 
 async function handleComment(
@@ -542,6 +681,28 @@ async function handleComment(
     return;
   }
   const record = result.value;
+
+  // Issue #195: `comment.subject` must point at an app.smellgate.review.
+  // Per the lexicon's own description: "Comments reply only to reviews,
+  // not to other comments. No thread trees in v1."
+  const subjectCol = atUriCollection(record.subject.uri);
+  if (subjectCol !== SMELLGATE_COLLECTIONS.review) {
+    logDrop("bad_collection_ref", evt, uri, {
+      field: "subject.uri",
+      expected: SMELLGATE_COLLECTIONS.review,
+      got: subjectCol,
+    });
+    return;
+  }
+
+  // Issue #196: empty-after-trim or over maxGraphemes.
+  if (!validateBody(record.body, COMMENT_BODY_MAX_GRAPHEMES).ok) {
+    logDrop("bad_body", evt, uri, {
+      field: "body",
+      reason: "empty-after-trim or over maxGraphemes",
+    });
+    return;
+  }
 
   await db
     .insertInto("smellgate_comment")
@@ -631,6 +792,66 @@ async function deleteByUri(
       await db.deleteFrom("smellgate_comment").where("uri", "=", uri).execute();
       return;
   }
+}
+
+/**
+ * Parse `uri` and return its collection segment, or `null` if the URI
+ * is malformed. Used by the collection-ref guards (issues #168, #180,
+ * #183, #194, #195) to drop events whose strongRef targets the wrong
+ * record type. We don't resolve the ref against the cache — firehose
+ * order is not dependency order, so a legitimate vote can arrive
+ * before its description — but a ref whose NSID segment is clearly
+ * wrong (e.g. a vote pointing at a perfume, or a shelfItem pointing
+ * at a perfumeSubmission) is unambiguously bogus regardless of
+ * arrival order.
+ */
+function atUriCollection(uri: string): string | null {
+  try {
+    return new AtUri(uri).collection;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * `authority` (the DID) of an AT-URI, or `null` if the input is not a
+ * parseable AT-URI. Used by the self-vote guard (#191): the description
+ * URI's hostname is its author's DID — no DB round-trip needed.
+ */
+function atUriAuthority(uri: string): string | null {
+  try {
+    return new AtUri(uri).hostname;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Validate a free-text body: trim, reject empty / whitespace-only,
+ * reject > maxGraphemes. Returns `{ ok: true, body }` on success (body
+ * is the trimmed value — but we don't write the trimmed version back
+ * to the cache because the dispatcher stores records verbatim; this is
+ * only a gate). Returns `{ ok: false, reason }` on failure so the
+ * caller can emit a single `logDrop` line.
+ *
+ * Whitespace-only rejection mirrors the server-action layer's
+ * `rawBody.trim().length === 0` check (issues #185, #193, #196).
+ *
+ * We count graphemes with `Intl.Segmenter` via `countGraphemes` to
+ * agree with the lexicon's `maxGraphemes` semantic. The `$safeParse`
+ * already enforces `maxGraphemes` via the generated validator, so this
+ * extra length check is belt-and-braces; the explicit drop here gives
+ * a cleaner `logDrop` reason than the generic `lex_validate` when
+ * debugging (issue #189).
+ */
+function validateBody(
+  raw: unknown,
+  max: number,
+): { ok: true } | { ok: false } {
+  if (typeof raw !== "string") return { ok: false };
+  if (raw.trim().length === 0) return { ok: false };
+  if (countGraphemes(raw) > max) return { ok: false };
+  return { ok: true };
 }
 
 /**

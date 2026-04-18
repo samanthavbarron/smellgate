@@ -694,7 +694,25 @@ describe("smellgate submission + curator flow (Phase 3.C)", () => {
   // 5. Approve rewrite end-to-end
   // ---------------------------------------------------------------------------
 
-  it("rewritePendingRecords repoints a pending review to a newly-approved perfume", async () => {
+  // The three rewrite tests below are skipped because the dispatcher
+  // now drops records whose `perfume.uri` collection is not
+  // `app.smellgate.perfume` (issues #168, #180, #194 — dispatcher-side
+  // symmetric guards mirroring the server-action guard in
+  // `requirePerfumeCollection`, PR #160). Pending records authored
+  // against a `perfumeSubmission` URI therefore never reach the cache,
+  // so `getPendingRecordsForUser` returns empty and the rewrite mechanic
+  // is effectively dead.
+  //
+  // The rewrite mechanic was the v1 answer to "what if a user writes
+  // a review before the perfume is canonicalized?" — the server action
+  // in PR #160 (`postReviewAction` + peers) already rejects that case,
+  // and the dispatcher guard closes the direct-PDS-write bypass. Both
+  // layers now agree: pending records against a submission URI are not
+  // valid. A future design that revives pending workflows (e.g. by
+  // reading pending records from the user's PDS rather than the cache)
+  // would need its own tests; these ones are kept skipped as executable
+  // documentation of the legacy flow.
+  it.skip("rewritePendingRecords repoints a pending review to a newly-approved perfume", async () => {
     // Alice submits.
     const sub = await env.actions.submitPerfumeAction(env.db.getDb(), aliceSession, {
       name: "Pending Target",
@@ -827,7 +845,7 @@ describe("smellgate submission + curator flow (Phase 3.C)", () => {
   // 6. Duplicate rewrite end-to-end
   // ---------------------------------------------------------------------------
 
-  it("rewritePendingRecords repoints a pending shelfItem to an existing canonical perfume via duplicate", async () => {
+  it.skip("rewritePendingRecords repoints a pending shelfItem to an existing canonical perfume via duplicate", async () => {
     const canonicalUri = await seedCanonicalPerfume(env, bob.did, "Classic");
     const canonicalRow = await env.queries.getPerfumeByUri(
       env.db.getDb(),
@@ -1175,7 +1193,7 @@ describe("smellgate submission + curator flow (Phase 3.C)", () => {
     ).rejects.toMatchObject({ name: "ActionError", status: 400 });
   }, 120_000);
 
-  it("rewritePendingRecords is scoped to the calling user (cross-tenant guard)", async () => {
+  it.skip("rewritePendingRecords is scoped to the calling user (cross-tenant guard)", async () => {
     // Alice submits.
     const sub = await env.actions.submitPerfumeAction(env.db.getDb(), aliceSession, {
       name: "Tenant Target",
