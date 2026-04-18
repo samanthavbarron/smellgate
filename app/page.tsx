@@ -76,13 +76,23 @@ export default async function Home() {
             No perfumes have been indexed yet. Check back soon.
           </EmptyState>
         ) : (
-          <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {perfumes.map((p) => (
-              <li key={p.uri}>
-                <PerfumeTile perfume={p} />
-              </li>
-            ))}
-          </ul>
+          <>
+            <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {perfumes.map((p) => (
+                <li key={p.uri}>
+                  <PerfumeTile perfume={p} />
+                </li>
+              ))}
+            </ul>
+            <div className="mt-4 text-right text-sm">
+              <Link
+                href="/perfumes"
+                className="text-amber-700 hover:underline dark:text-amber-400"
+              >
+                See all perfumes &rarr;
+              </Link>
+            </div>
+          </>
         )}
       </section>
 

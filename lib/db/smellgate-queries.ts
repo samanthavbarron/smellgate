@@ -202,6 +202,10 @@ export async function getPerfumeByUri(
  * the author-controlled `created_at` — is the right ordering: it
  * reflects when our cache learned about the record, which is what the
  * "recent" section actually means to a visitor.
+ *
+ * Also powers the `/perfumes` browse-all page (issue #122) via the
+ * same ordering — that page just pages deeper with a larger `limit`
+ * and a non-zero `offset`.
  */
 export async function getRecentPerfumes(
   db: Db,
@@ -216,6 +220,22 @@ export async function getRecentPerfumes(
     .offset(offset)
     .execute();
   return attachNotes(db, perfumes);
+}
+
+/**
+ * Total number of canonical perfume rows in the cache. Used by the
+ * `/perfumes` browse-all page (issue #122) to compute the page count
+ * for its pagination UI. Intentionally a separate query rather than
+ * piggy-backing on `getRecentPerfumes` — the callers that want a
+ * paginated slice usually don't care about the grand total, and we
+ * don't want to pay for a `COUNT(*)` on every home-page render.
+ */
+export async function countPerfumes(db: Db): Promise<number> {
+  const row = await db
+    .selectFrom("smellgate_perfume")
+    .select((eb) => eb.fn.countAll<number>().as("count"))
+    .executeTakeFirstOrThrow();
+  return Number(row.count);
 }
 
 /**
