@@ -72,6 +72,28 @@ async function getKeyset(): Promise<Keyset | undefined> {
   }
 }
 
+/**
+ * Discard the cached `NodeOAuthClient` singleton so the next call to
+ * `getOAuthClient()` rebuilds it from scratch.
+ *
+ * Background: `@atproto/oauth-client`'s internal `CachedGetter.pending`
+ * map and `requestLocalLock`'s locks map are both held inside this
+ * singleton. If a `client.restore(did)` call wedges (see
+ * `lib/auth/session.ts` RESTORE_TIMEOUT_MS for the repro), the stale
+ * entries persist until the process restarts, so every subsequent
+ * request for that DID queues behind the dead promise forever. Tossing
+ * the singleton lets a fresh client pick up without a full process
+ * bounce. Safe to call concurrently: the worst case is two clients
+ * briefly coexist and one is GC'd — no external state is affected (the
+ * session/state stores in `lib/db` are the source of truth).
+ *
+ * Only call this in response to an actual stall; routinely tossing the
+ * client would defeat its token/metadata caches.
+ */
+export function resetOAuthClient(): void {
+  client = null;
+}
+
 export async function getOAuthClient(): Promise<NodeOAuthClient> {
   if (client) return client;
 

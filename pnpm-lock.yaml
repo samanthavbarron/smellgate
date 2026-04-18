@@ -31,7 +31,7 @@ dependencies:
     version: 0.28.10
   next:
     specifier: 16.1.1
-    version: 16.1.1(@babel/core@7.28.6)(react-dom@19.2.3)(react@19.2.3)
+    version: 16.1.1(@babel/core@7.28.6)(@playwright/test@1.59.1)(react-dom@19.2.3)(react@19.2.3)
   react:
     specifier: 19.2.3
     version: 19.2.3
@@ -46,6 +46,9 @@ devDependencies:
   '@atproto/dev-env':
     specifier: ^0.4.3
     version: 0.4.3
+  '@playwright/test':
+    specifier: ^1.59.1
+    version: 1.59.1
   '@tailwindcss/postcss':
     specifier: ^4
     version: 4.1.18
@@ -3044,6 +3047,13 @@ packages:
     dev: true
     optional: true
 
+  /@playwright/test@1.59.1:
+    resolution: {integrity: sha512-PG6q63nQg5c9rIi4/Z5lR5IVF7yU5MqmKaPOe0HSc0O2cX1fPi96sUQu5j7eo4gKCkB2AnNGoWt7y4/Xx3Kcqg==}
+    engines: {node: '>=18'}
+    hasBin: true
+    dependencies:
+      playwright: 1.59.1
+
   /@protobufjs/aspromise@1.1.2:
     resolution: {integrity: sha512-j+gKExEuLmKwvz3OgROXtrJ2UG2x8Ch2YZUxahh+s1F2HZ+wAceUNLkvy6zKCPVRkU++ZWQrdxsUeQXmcg4uoQ==}
     dev: true
@@ -5883,6 +5893,13 @@ packages:
   /fs-constants@1.0.0:
     resolution: {integrity: sha512-y6OAwoSIf7FyjMIv94u+b5rdheZEjzR63GTyZJm5qh4Bi+2YgwLCcI/fPFZkL5PSixOt6ZNKm+w+Hfp/Bciwow==}
 
+  /fsevents@2.3.2:
+    resolution: {integrity: sha512-xiqMQR4xAeHTuB9uWm+fFRcIOgKBMiOBP+eXiyT7jsgVCq1bkVygt00oASowB7EdtpOHaaPgKt812P9ab+DDKA==}
+    engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
+    os: [darwin]
+    requiresBuild: true
+    optional: true
+
   /fsevents@2.3.3:
     resolution: {integrity: sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==}
     engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
@@ -7017,7 +7034,7 @@ packages:
     resolution: {integrity: sha512-Yd3UES5mWCSqR+qNT93S3UoYUkqAZ9lLg8a7g9rimsWmYGK8cVToA4/sF3RrshdyV3sAGMXVUmpMYOw+dLpOuw==}
     dev: true
 
-  /next@16.1.1(@babel/core@7.28.6)(react-dom@19.2.3)(react@19.2.3):
+  /next@16.1.1(@babel/core@7.28.6)(@playwright/test@1.59.1)(react-dom@19.2.3)(react@19.2.3):
     resolution: {integrity: sha512-QI+T7xrxt1pF6SQ/JYFz95ro/mg/1Znk5vBebsWwbpejj1T0A23hO7GYEaVac9QUOT2BIMiuzm0L99ooq7k0/w==}
     engines: {node: '>=20.9.0'}
     hasBin: true
@@ -7039,6 +7056,7 @@ packages:
         optional: true
     dependencies:
       '@next/env': 16.1.1
+      '@playwright/test': 1.59.1
       '@swc/helpers': 0.5.15
       baseline-browser-mapping: 2.9.16
       caniuse-lite: 1.0.30001765
@@ -7414,6 +7432,20 @@ packages:
       safe-stable-stringify: 2.5.0
       sonic-boom: 3.8.1
       thread-stream: 2.7.0
+
+  /playwright-core@1.59.1:
+    resolution: {integrity: sha512-HBV/RJg81z5BiiZ9yPzIiClYV/QMsDCKUyogwH9p3MCP6IYjUFu/MActgYAvK0oWyV9NlwM3GLBjADyWgydVyg==}
+    engines: {node: '>=18'}
+    hasBin: true
+
+  /playwright@1.59.1:
+    resolution: {integrity: sha512-C8oWjPR3F81yljW9o5OxcWzfh6avkVwDD2VYdwIGqTkl+OGFISgypqzfu7dOe4QNLL2aqcWBmI3PMtLIK233lw==}
+    engines: {node: '>=18'}
+    hasBin: true
+    dependencies:
+      playwright-core: 1.59.1
+    optionalDependencies:
+      fsevents: 2.3.2
 
   /possible-typed-array-names@1.1.0:
     resolution: {integrity: sha512-/+5VFTchJDoVj3bhoqi6UeymcD00DAwb1nJwamzPvHEszJ4FpF6SNNbUbOS8yI56qHzdV8eK0qEfOSiodkTdxg==}

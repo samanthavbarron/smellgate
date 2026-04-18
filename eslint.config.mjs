@@ -25,6 +25,17 @@ const eslintConfig = defineConfig([
     // sibling worktree and reports thousands of phantom errors (generated
     // lexicons, stale `.next/` builds, etc.). See issue #38.
     ".claude/**",
+    // Playwright fixtures use `use()` as the fixture-value setter, which
+    // collides with ESLint's `react-hooks/rules-of-hooks` heuristic. Lint
+    // for e2e specs happens via `pnpm exec playwright test`'s TS compile;
+    // excluding them here keeps `pnpm lint` green without weakening the
+    // rule for real component code.
+    "tests/e2e/**",
+    // Playwright run outputs (HTML report + trace viewer bundle). The
+    // trace viewer ships minified upstream JS that trips many rules —
+    // not our code, never checked in (see .gitignore).
+    "**/playwright-report/**",
+    "**/test-results/**",
   ]),
 ]);
 
