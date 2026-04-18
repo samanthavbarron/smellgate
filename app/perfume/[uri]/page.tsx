@@ -58,6 +58,7 @@ export default async function PerfumeDetailPage({
     getPerfumeByUri(db, uri),
   ]);
   if (!perfume) {
+    // Rendered by the scoped `not-found.tsx` sibling (#123).
     notFound();
   }
 
