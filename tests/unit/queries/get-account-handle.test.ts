@@ -187,6 +187,35 @@ describe("getAccountHandle (#109 fallback)", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
+  it("write-through UPDATE path preserves active=0 on existing rows (issue #162)", async () => {
+    // Seed an existing deactivated row — the state Tap's `#account`
+    // firehose event sets when a user deactivates.
+    await env.db
+      .getDb()
+      .insertInto("account")
+      .values({ did: TEST_DID, handle: "old.test", active: 0 })
+      .execute();
+
+    // Simulate what `writeThroughAccountHandle` runs after a
+    // PLC-directory hit: INSERT ... ON CONFLICT DO UPDATE with only
+    // `handle` on the UPDATE side (the #162 fix). Before the fix
+    // `active` was also in the UPDATE set, which would flip the
+    // deactivated row back to 1.
+    await env.db
+      .getDb()
+      .insertInto("account")
+      .values({ did: TEST_DID, handle: TEST_HANDLE, active: 1 })
+      .onConflict((oc) => oc.column("did").doUpdateSet({ handle: TEST_HANDLE }))
+      .execute();
+    const row = await env.db
+      .getDb()
+      .selectFrom("account")
+      .select(["handle", "active"])
+      .where("did", "=", TEST_DID)
+      .executeTakeFirst();
+    expect(row).toEqual({ handle: TEST_HANDLE, active: 0 });
+  });
+
   it("cache miss + Tap throws → public PLC hit — Tap errors fall through to the public fallback", async () => {
     stubTapResolveDid(env.tap, async () => {
       throw new Error("TAP_URL unreachable");
