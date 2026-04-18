@@ -581,6 +581,109 @@ describe("smellgate server actions (Phase 3.B)", () => {
       );
       expect(afterCount).toBe(beforeCount);
     }, 30_000);
+
+    // Issue #110: adding the same perfume twice must not leave two
+    // shelfItem records — the second call should replace the first
+    // rather than pile up. The response URI is the surviving record.
+    it("replaces an existing shelfItem when the same perfume is re-added", async () => {
+      const perfumeUri = await seedPerfume(env, "Idempotent Shelf");
+      const first = await env.actions.addToShelfAction(
+        env.db.getDb(),
+        aliceSession,
+        { perfumeUri, bottleSizeMl: 50 },
+      );
+      const second = await env.actions.addToShelfAction(
+        env.db.getDb(),
+        aliceSession,
+        { perfumeUri, bottleSizeMl: 100, isDecant: true },
+      );
+      expect(second.uri).not.toBe(first.uri);
+
+      // Only one shelfItem on the PDS points at this perfume, and it
+      // is the second one with the new metadata.
+      const listRes = await aliceSession.fetchHandler(
+        `/xrpc/com.atproto.repo.listRecords?repo=${encodeURIComponent(
+          alice.did,
+        )}&collection=app.smellgate.shelfItem&limit=100`,
+        { method: "GET" },
+      );
+      const listBody = (await listRes.json()) as {
+        records: {
+          uri: string;
+          value: {
+            perfume?: { uri?: string };
+            bottleSizeMl?: number;
+            isDecant?: boolean;
+          };
+        }[];
+      };
+      const matching = listBody.records.filter(
+        (r) => r.value?.perfume?.uri === perfumeUri,
+      );
+      expect(matching).toHaveLength(1);
+      expect(matching[0].uri).toBe(second.uri);
+      expect(matching[0].value.bottleSizeMl).toBe(100);
+      expect(matching[0].value.isDecant).toBe(true);
+    }, 90_000);
+
+    // Issue #110: shelf adds for *different* perfumes are independent
+    // — the idempotence scan must only dedupe against the same
+    // perfume URI, not flatten the user's whole shelf.
+    it("does not disturb shelfItems for other perfumes when re-adding", async () => {
+      const perfumeA = await seedPerfume(env, "Shelf A");
+      const perfumeB = await seedPerfume(env, "Shelf B");
+      const a = await env.actions.addToShelfAction(
+        env.db.getDb(),
+        aliceSession,
+        { perfumeUri: perfumeA },
+      );
+      const b = await env.actions.addToShelfAction(
+        env.db.getDb(),
+        aliceSession,
+        { perfumeUri: perfumeB },
+      );
+      // Re-add A — must not clobber B.
+      const aAgain = await env.actions.addToShelfAction(
+        env.db.getDb(),
+        aliceSession,
+        { perfumeUri: perfumeA, bottleSizeMl: 75 },
+      );
+
+      const listRes = await aliceSession.fetchHandler(
+        `/xrpc/com.atproto.repo.listRecords?repo=${encodeURIComponent(
+          alice.did,
+        )}&collection=app.smellgate.shelfItem&limit=100`,
+        { method: "GET" },
+      );
+      const listBody = (await listRes.json()) as {
+        records: { uri: string; value: { perfume?: { uri?: string } } }[];
+      };
+      const uris = listBody.records.map((r) => r.uri).sort();
+      expect(uris.sort()).toEqual([aAgain.uri, b.uri].sort());
+      // The original `a` URI is gone (replaced).
+      expect(uris).not.toContain(a.uri);
+    }, 120_000);
+
+    // Issue #132: a submission URI passed to addToShelf should hit
+    // the collection-check 400 before the cache lookup — same rationale
+    // as reviewing a submission.
+    // Verb is per-action (adversarial-review follow-up: the original
+    // wording hard-coded "review" and misled shelf/description callers).
+    it("rejects a submission URI with a distinct 400 whose verb is 'add to shelf'", async () => {
+      const fakeSubmissionUri =
+        "at://did:plc:not-real/app.smellgate.perfumeSubmission/abc";
+      await expect(
+        env.actions.addToShelfAction(env.db.getDb(), aliceSession, {
+          perfumeUri: fakeSubmissionUri,
+        }),
+      ).rejects.toMatchObject({
+        name: "ActionError",
+        status: 400,
+        message: expect.stringMatching(
+          /cannot add to shelf a pending submission/i,
+        ),
+      });
+    }, 30_000);
   });
 
   // -- postReviewAction -----------------------------------------------------
@@ -645,6 +748,73 @@ describe("smellgate server actions (Phase 3.B)", () => {
       );
       expect(afterCount).toBe(beforeCount);
     }, 30_000);
+
+    // Issue #132: reviewing a pending submission URI returned a
+    // misleading "unknown perfume" 404. Now it should return a
+    // distinct 400 explaining submissions are still pending curator
+    // approval. The verb is "review" specifically (adversarial-review
+    // follow-up — tests the per-action verb, not a loose
+    // `/pending submission/` match that would have missed the original
+    // "cannot review" hard-code).
+    it("rejects a submission URI with a distinct 400 whose verb is 'review'", async () => {
+      // Alice's own pending submission — exercises the exact
+      // first-time-submitter flow from the bug report.
+      const submitResult = await env.actions.submitPerfumeAction(
+        env.db.getDb(),
+        aliceSession,
+        {
+          name: "Own Submission",
+          house: "Own House",
+          notes: ["rose"],
+        },
+      );
+      const beforeCount = await listRecordCount(
+        aliceSession,
+        alice.did,
+        "app.smellgate.review",
+      );
+      await expect(
+        env.actions.postReviewAction(env.db.getDb(), aliceSession, {
+          perfumeUri: submitResult.uri,
+          rating: 8,
+          sillage: 3,
+          longevity: 4,
+          body: "my own take",
+        }),
+      ).rejects.toMatchObject({
+        name: "ActionError",
+        status: 400,
+        message: expect.stringMatching(/cannot review a pending submission/i),
+      });
+      // And no review record was written.
+      const afterCount = await listRecordCount(
+        aliceSession,
+        alice.did,
+        "app.smellgate.review",
+      );
+      expect(afterCount).toBe(beforeCount);
+    }, 60_000);
+
+    // Issue #132: a URI for a different (non-perfume, non-submission)
+    // collection should get its own distinct 400, not the submission-
+    // specific message. The verb must still be the action's own verb.
+    it("rejects a wrong-kind URI with a generic 400 naming the collection and the action verb", async () => {
+      await expect(
+        env.actions.postReviewAction(env.db.getDb(), aliceSession, {
+          perfumeUri: "at://did:plc:not-real/app.smellgate.review/abc",
+          rating: 8,
+          sillage: 3,
+          longevity: 4,
+          body: "nope",
+        }),
+      ).rejects.toMatchObject({
+        name: "ActionError",
+        status: 400,
+        message: expect.stringMatching(
+          /cannot review against a app\.smellgate\.review record/,
+        ),
+      });
+    }, 30_000);
   });
 
   // -- postDescriptionAction ------------------------------------------------
@@ -693,6 +863,32 @@ describe("smellgate server actions (Phase 3.B)", () => {
       );
       expect(afterCount).toBe(beforeCount);
     }, 30_000);
+
+    // Issue #132: same fix applies — describing a pending submission
+    // should fail with the clearer "pending submission" 400 rather
+    // than "unknown perfume" 404. Verb is "describe" (adversarial-
+    // review follow-up on the shared helper's verb parameterisation).
+    it("rejects a submission URI with a distinct 400 whose verb is 'describe'", async () => {
+      const submitResult = await env.actions.submitPerfumeAction(
+        env.db.getDb(),
+        aliceSession,
+        {
+          name: "Desc Submission",
+          house: "Desc House",
+          notes: ["rose"],
+        },
+      );
+      await expect(
+        env.actions.postDescriptionAction(env.db.getDb(), aliceSession, {
+          perfumeUri: submitResult.uri,
+          body: "a community description",
+        }),
+      ).rejects.toMatchObject({
+        name: "ActionError",
+        status: 400,
+        message: expect.stringMatching(/cannot describe a pending submission/i),
+      });
+    }, 60_000);
   });
 
   // -- voteOnDescriptionAction ----------------------------------------------
