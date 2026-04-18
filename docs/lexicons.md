@@ -16,7 +16,7 @@ Per ATProto's [NSID resolution](https://atproto.com/specs/nsid) approach, the au
 - **Type:** `TXT`
 - **Value:** `did=<curator-account-DID>` — the DID of the smellgate curator account that owns the lexicon definitions. (The exact text format follows the [ATProto NSID resolution](https://atproto.com/specs/nsid) spec; if the spec has moved on by the time this is set, follow the spec, not this doc.)
 
-**Status:** set. `_lexicon.smellgate.app` resolves to a TXT record with value `did=did:plc:l6l3piyd3hywg76f2udorm53` (confirmed via DNS-over-HTTPS). This is the DID of [`smellgate.bsky.social`](https://bsky.app/profile/smellgate.bsky.social), the production curator account. Local development and integration tests against an ephemeral PDS do not rely on the record.
+**Status:** set. `_lexicon.smellgate.app` should resolve to a TXT record with value `did=did:plc:sna3qx44beg2mb5fao44gsxh` — the DID of [`samantha.wiki`](https://bsky.app/profile/samantha.wiki), the current curator account while `@smellgate.bsky.social` credentials are being recovered. The DNS record is being updated out-of-band alongside this change; verify with `curl -s -H "accept: application/dns-json" "https://cloudflare-dns.com/dns-query?name=_lexicon.smellgate.app&type=TXT"`. Local development and integration tests against an ephemeral PDS do not rely on the record.
 
 ## The canonical-identity problem, and how we solve it
 
@@ -33,7 +33,7 @@ The Skylights pattern does not work for us: the perfume-world equivalents of TMD
 
 ### Curator account
 
-- Identity: [`smellgate.bsky.social`](https://bsky.app/profile/smellgate.bsky.social), DID `did:plc:l6l3piyd3hywg76f2udorm53`. Its PDS holds the authoritative `app.smellgate.perfume` collection.
+- Identity: [`samantha.wiki`](https://bsky.app/profile/samantha.wiki), DID `did:plc:sna3qx44beg2mb5fao44gsxh`. Its PDS holds the authoritative `app.smellgate.perfume` collection. (This is a stopgap while the dedicated `@smellgate.bsky.social` credentials are being recovered — will swap back once that account is reachable.)
 - Curators: Samantha and Sam, manually, to start. No automated auto-approval in the initial implementation — humans look at every submission. This is acceptable because the initial catalog is small and the submission rate is zero.
 - Curator tooling lives inside the smellgate app, gated by a config list of curator DIDs. This is the only piece of the app that has a concept of "admin" — keep it simple, no roles/permissions system.
 
