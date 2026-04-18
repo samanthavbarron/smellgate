@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getOAuthClient } from "@/lib/auth/client";
 import { getDb } from "@/lib/db";
 import { rewritePendingRecords } from "@/lib/server/smellgate-curator-actions";
+import { enrollInTap } from "@/lib/tap/enroll";
 
 const PUBLIC_URL = process.env.PUBLIC_URL || "http://127.0.0.1:3000";
 
@@ -31,6 +32,24 @@ export async function GET(request: NextRequest) {
     void rewritePendingRecords(getDb(), session).catch((err) => {
       console.warn("[callback] rewrite failed", err);
     });
+
+    // Issues #166, #190: enroll the user's DID with smellgate-tap so
+    // the firehose indexer starts forwarding their records to this
+    // app's webhook. Tap's `TAP_SIGNAL_COLLECTION` auto-enrollment is
+    // unreliable in practice for bsky.social-hosted accounts — writes
+    // from freshly-registered DIDs never reached the cache in the
+    // 2026-04-17 bug-hunt. Explicit enrollment on login sidesteps
+    // that: every authenticated smellgate user gets their repo tracked
+    // from the moment they log in.
+    //
+    // Short-await (3s timeout inside `enrollInTap`) rather than
+    // fire-and-forget so we surface log lines when Tap is flaking,
+    // without dragging login UX past ~3s in the worst case. `enrollInTap`
+    // never throws, so this `await` cannot break the redirect. Calls
+    // are idempotent on Tap's side, so retrying on every login is
+    // cheap and covers the "user signed up before this PR shipped"
+    // case automatically.
+    await enrollInTap(session.did);
 
     const response = NextResponse.redirect(new URL("/", PUBLIC_URL));
 
