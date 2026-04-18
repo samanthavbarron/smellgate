@@ -335,8 +335,15 @@ function requireIntInRange(
  * approval. Any other collection gets a generic "wrong kind of URI"
  * 400 so a stray typo (`...review/abc`) doesn't lie about approval
  * state.
+ *
+ * `actionLabel` is the user-facing verb phrase for this write — e.g.
+ * `"add to shelf"`, `"review"`, `"describe"`. It is embedded in the
+ * error message so each action produces the right verb (review bug
+ * surfaced in adversarial review of PR #160: a shelf-add against a
+ * submission URI said "cannot review a pending submission" which is
+ * the wrong verb for the user's action).
  */
-function requirePerfumeCollection(uri: string): void {
+function requirePerfumeCollection(uri: string, actionLabel: string): void {
   let collection: string;
   try {
     collection = new AtUri(uri).collection;
@@ -346,26 +353,27 @@ function requirePerfumeCollection(uri: string): void {
   if (collection === "app.smellgate.perfume") return;
   if (collection === "app.smellgate.perfumeSubmission") {
     bad(
-      "cannot review a pending submission — reviews are only valid for " +
-        "approved catalog perfumes (app.smellgate.perfume). This " +
-        "submission is still pending curator approval.",
+      `cannot ${actionLabel} a pending submission — ` +
+        "only approved catalog perfumes (app.smellgate.perfume) accept " +
+        "this write. This submission is still pending curator approval.",
     );
   }
   bad(
     `expected an app.smellgate.perfume URI, got a ${collection} URI — ` +
-      "only approved catalog perfumes accept shelf / review / description writes.",
+      `cannot ${actionLabel} against a ${collection} record.`,
   );
 }
 
 async function requirePerfumeInCache(
   db: Db,
   uri: string,
+  actionLabel: string,
 ): Promise<{ uri: l.AtUriString; cid: l.CidString }> {
   if (!isNonEmptyString(uri, 8192)) bad("perfumeUri is required");
   // Reject wrong-collection URIs BEFORE the cache miss, so submission
   // URIs get the clearer message instead of "unknown perfume". See
   // `requirePerfumeCollection` for the wording rationale (#132).
-  requirePerfumeCollection(uri);
+  requirePerfumeCollection(uri, actionLabel);
   const row = await getPerfumeByUri(db, uri);
   if (!row) notFound(`unknown perfume: ${uri}`);
   return strongRef(row.uri, row.cid);
@@ -410,7 +418,11 @@ export async function addToShelfAction(
   session: OAuthSession,
   input: AddToShelfInput,
 ): Promise<AddToShelfResult> {
-  const target = await requirePerfumeInCache(db, input.perfumeUri);
+  const target = await requirePerfumeInCache(
+    db,
+    input.perfumeUri,
+    "add to shelf",
+  );
 
   const acquiredAt = requireDatetime(input.acquiredAt, "acquiredAt");
   let bottleSizeMl: number | undefined;
@@ -448,6 +460,13 @@ export async function addToShelfAction(
   // authoritative action and a transient read hiccup shouldn't block
   // a shelf add. The worst case is a single duplicate from the race
   // window, which the next successful add will clean up.
+  //
+  // Concurrency note: two concurrent re-adds on the same (user,
+  // perfume) can both observe the same prior shelfItem and race the
+  // delete → two surviving records. Acceptable v1 degradation — users
+  // rarely spam add-to-shelf concurrently. A real fix (compare-and-
+  // swap via the PDS's `swapRecord` API, or a post-create re-scan) is
+  // future work and matches the 100-record-cap acknowledgement above.
   try {
     const listUrl =
       `/xrpc/com.atproto.repo.listRecords` +
@@ -470,11 +489,27 @@ export async function addToShelfAction(
             collection: "app.smellgate.shelfItem",
             rkey,
           };
-          await session.fetchHandler(`/xrpc/com.atproto.repo.deleteRecord`, {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify(delBody),
-          });
+          const delRes = await session.fetchHandler(
+            `/xrpc/com.atproto.repo.deleteRecord`,
+            {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify(delBody),
+            },
+          );
+          // Log — don't throw — on a per-record delete failure. The
+          // create call still proceeds and is the authoritative write;
+          // the only cost of a missed delete is a duplicate shelfItem
+          // that the next successful add will sweep up. Making the
+          // silent-tolerance visible in logs lets ops spot a
+          // degradation pattern (e.g. a PDS consistently 403-ing
+          // deleteRecord).
+          if (!delRes.ok) {
+            console.warn(
+              `addToShelfAction: failed to delete prior shelfItem ` +
+                `${rec.uri}: ${delRes.status}; proceeding with create`,
+            );
+          }
         }
       }
     }
@@ -523,7 +558,7 @@ export async function postReviewAction(
   session: OAuthSession,
   input: PostReviewInput,
 ): Promise<PostReviewResult> {
-  const target = await requirePerfumeInCache(db, input.perfumeUri);
+  const target = await requirePerfumeInCache(db, input.perfumeUri, "review");
   const rating = requireIntInRange(input.rating, "rating", 1, 10);
   const sillage = requireIntInRange(input.sillage, "sillage", 1, 5);
   const longevity = requireIntInRange(input.longevity, "longevity", 1, 5);
@@ -569,7 +604,11 @@ export async function postDescriptionAction(
   session: OAuthSession,
   input: PostDescriptionInput,
 ): Promise<PostDescriptionResult> {
-  const target = await requirePerfumeInCache(db, input.perfumeUri);
+  const target = await requirePerfumeInCache(
+    db,
+    input.perfumeUri,
+    "describe",
+  );
   const rawBody = requireString(input.body, "body");
   if (rawBody.trim().length === 0) bad("body must not be empty");
   // Issue #130: sanitize at the write edge. Community descriptions
@@ -678,11 +717,25 @@ export async function voteOnDescriptionAction(
             collection: "app.smellgate.vote",
             rkey,
           };
-          await session.fetchHandler(`/xrpc/com.atproto.repo.deleteRecord`, {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify(delBody),
-          });
+          const delRes = await session.fetchHandler(
+            `/xrpc/com.atproto.repo.deleteRecord`,
+            {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify(delBody),
+            },
+          );
+          // Log — don't throw — on a per-record delete failure. Same
+          // rationale as `addToShelfAction`: the create call is
+          // authoritative and read-time dedupe masks any stray
+          // duplicate, but we want the silent-tolerance visible in
+          // logs so ops can spot a degradation pattern.
+          if (!delRes.ok) {
+            console.warn(
+              `voteOnDescriptionAction: failed to delete prior vote ` +
+                `${rec.uri}: ${delRes.status}; proceeding with create`,
+            );
+          }
         }
       }
     }

@@ -667,7 +667,9 @@ describe("smellgate server actions (Phase 3.B)", () => {
     // Issue #132: a submission URI passed to addToShelf should hit
     // the collection-check 400 before the cache lookup — same rationale
     // as reviewing a submission.
-    it("rejects a submission URI with a distinct 400 rather than 404", async () => {
+    // Verb is per-action (adversarial-review follow-up: the original
+    // wording hard-coded "review" and misled shelf/description callers).
+    it("rejects a submission URI with a distinct 400 whose verb is 'add to shelf'", async () => {
       const fakeSubmissionUri =
         "at://did:plc:not-real/app.smellgate.perfumeSubmission/abc";
       await expect(
@@ -677,7 +679,9 @@ describe("smellgate server actions (Phase 3.B)", () => {
       ).rejects.toMatchObject({
         name: "ActionError",
         status: 400,
-        message: expect.stringMatching(/pending submission/i),
+        message: expect.stringMatching(
+          /cannot add to shelf a pending submission/i,
+        ),
       });
     }, 30_000);
   });
@@ -748,8 +752,11 @@ describe("smellgate server actions (Phase 3.B)", () => {
     // Issue #132: reviewing a pending submission URI returned a
     // misleading "unknown perfume" 404. Now it should return a
     // distinct 400 explaining submissions are still pending curator
-    // approval.
-    it("rejects a submission URI with a distinct 400 explaining submissions are pending", async () => {
+    // approval. The verb is "review" specifically (adversarial-review
+    // follow-up — tests the per-action verb, not a loose
+    // `/pending submission/` match that would have missed the original
+    // "cannot review" hard-code).
+    it("rejects a submission URI with a distinct 400 whose verb is 'review'", async () => {
       // Alice's own pending submission — exercises the exact
       // first-time-submitter flow from the bug report.
       const submitResult = await env.actions.submitPerfumeAction(
@@ -777,7 +784,7 @@ describe("smellgate server actions (Phase 3.B)", () => {
       ).rejects.toMatchObject({
         name: "ActionError",
         status: 400,
-        message: expect.stringMatching(/pending submission/i),
+        message: expect.stringMatching(/cannot review a pending submission/i),
       });
       // And no review record was written.
       const afterCount = await listRecordCount(
@@ -790,8 +797,8 @@ describe("smellgate server actions (Phase 3.B)", () => {
 
     // Issue #132: a URI for a different (non-perfume, non-submission)
     // collection should get its own distinct 400, not the submission-
-    // specific message.
-    it("rejects a wrong-kind URI with a generic 400 naming the collection", async () => {
+    // specific message. The verb must still be the action's own verb.
+    it("rejects a wrong-kind URI with a generic 400 naming the collection and the action verb", async () => {
       await expect(
         env.actions.postReviewAction(env.db.getDb(), aliceSession, {
           perfumeUri: "at://did:plc:not-real/app.smellgate.review/abc",
@@ -803,7 +810,9 @@ describe("smellgate server actions (Phase 3.B)", () => {
       ).rejects.toMatchObject({
         name: "ActionError",
         status: 400,
-        message: expect.stringMatching(/app\.smellgate\.review/),
+        message: expect.stringMatching(
+          /cannot review against a app\.smellgate\.review record/,
+        ),
       });
     }, 30_000);
   });
@@ -857,8 +866,9 @@ describe("smellgate server actions (Phase 3.B)", () => {
 
     // Issue #132: same fix applies — describing a pending submission
     // should fail with the clearer "pending submission" 400 rather
-    // than "unknown perfume" 404.
-    it("rejects a submission URI with a distinct 400 explaining submissions are pending", async () => {
+    // than "unknown perfume" 404. Verb is "describe" (adversarial-
+    // review follow-up on the shared helper's verb parameterisation).
+    it("rejects a submission URI with a distinct 400 whose verb is 'describe'", async () => {
       const submitResult = await env.actions.submitPerfumeAction(
         env.db.getDb(),
         aliceSession,
@@ -876,7 +886,7 @@ describe("smellgate server actions (Phase 3.B)", () => {
       ).rejects.toMatchObject({
         name: "ActionError",
         status: 400,
-        message: expect.stringMatching(/pending submission/i),
+        message: expect.stringMatching(/cannot describe a pending submission/i),
       });
     }, 60_000);
   });
