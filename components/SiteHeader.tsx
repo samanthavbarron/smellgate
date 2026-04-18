@@ -6,7 +6,7 @@
  * without talking to the DB itself. Intentionally stateless — the
  * layout is the single place that asks "who is this visitor?".
  *
- * Visual target: letterboxd-minimal. Thin border, wordmark left, nav
+ * Visual target: minimal. Thin border, wordmark left, nav
  * right, no drop shadows, no decorative chrome. The search box lives
  * here in a later PR (Phase 4.F) — leave the space but do not build
  * it.

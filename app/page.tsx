@@ -34,7 +34,7 @@ export default async function Home() {
           smellgate
         </h1>
         <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-          Letterboxd for perfume. Built on ATProto.
+          Log, rate, and review perfumes. Built on ATProto.
         </p>
       </section>
 

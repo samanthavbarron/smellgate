@@ -111,7 +111,7 @@ There is no `status` field on the submission itself. Resolution is tracked by a 
 - `body` (string, required, min 1 / max ~15000 graphemes) — `minLength: 1` is enforced in the lexicon so a zero-length body fails `$safeParse`. ATProto's `required` only means the field is present; without `minLength` an empty string would validate.
 - `createdAt` (datetime, required)
 
-Scale choice: 1–10 for overall (gives more room for nuance than 1–5, and mirrors Letterboxd's half-star-of-5 system when halved for display); 1–5 for sillage and longevity because those are coarser physical observations.
+Scale choice: 1–10 for overall (gives more room for nuance than 1–5, and maps cleanly to a half-star-of-5 display when halved); 1–5 for sillage and longevity because those are coarser physical observations.
 
 ### `app.smellgate.description` — a community-authored description
 

@@ -1,6 +1,6 @@
 # smellgate
 
-A letterboxd-style app for perfumes, built on [ATProto](https://atproto.com).
+Log, rate, and review perfumes. Built on [ATProto](https://atproto.com).
 
 Log perfumes you own, rate them across overall impression / sillage / longevity, contribute community descriptions, vote on descriptions others have written, and browse each other's shelves. Built on the operator-curated catalog pattern from [Bookhive](https://bookhive.buzz/) — a dedicated curator account publishes the canonical perfume records, and user records (shelves, reviews, descriptions, comments, votes) reference them by AT-URI.
 
