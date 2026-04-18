@@ -206,6 +206,15 @@ export async function getPerfumeByUri(
  * Also powers the `/perfumes` browse-all page (issue #122) via the
  * same ordering — that page just pages deeper with a larger `limit`
  * and a non-zero `offset`.
+ *
+ * Secondary `uri DESC` sort is a stable tiebreaker. `indexed_at` is
+ * `Date.now()` (ms) and the bulk seeder in
+ * `scripts/seed-cache-from-fixtures.ts` easily lands multiple rows in
+ * the same millisecond. Without a total order the SQL engine is free
+ * to return ties in different orders across `LIMIT ... OFFSET 0` /
+ * `LIMIT ... OFFSET N` calls — which silently duplicates or skips
+ * rows across `?page=1` → `?page=2` on the browse-all page. `uri` is
+ * the primary key, so this makes the overall order total + stable.
  */
 export async function getRecentPerfumes(
   db: Db,
@@ -216,6 +225,7 @@ export async function getRecentPerfumes(
     .selectFrom("smellgate_perfume")
     .selectAll()
     .orderBy("indexed_at", "desc")
+    .orderBy("uri", "desc")
     .limit(limit)
     .offset(offset)
     .execute();

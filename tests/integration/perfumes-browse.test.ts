@@ -145,6 +145,19 @@ function countTiles(html: string): number {
 }
 
 /**
+ * Extract the decoded AT-URI of each tile from its `href`. `PerfumeTile`
+ * renders `<a href="/perfume/${encodeURIComponent(uri)}">`, so we
+ * reverse that to get the original URI back.
+ */
+function tileUris(html: string): string[] {
+  const matches = html.match(/href="\/perfume\/([^"]+)"/g) ?? [];
+  return matches.map((m) => {
+    const encoded = m.slice('href="/perfume/'.length, -1);
+    return decodeURIComponent(encoded);
+  });
+}
+
+/**
  * React SSR injects `<!-- -->` comment markers between text nodes and
  * `{...}` interpolations ({"Page "}{page}{" of "}{totalPages} becomes
  * `Page <!-- -->1<!-- --> of <!-- -->2`). Strip them so we can assert
@@ -168,10 +181,13 @@ describe("/perfumes browse-all page (#122)", () => {
   });
 
   it("paginates a 30-perfume catalog into page 1 (24) + page 2 (6)", async () => {
-    // Seed 30 perfumes. Each dispatch gives the row a distinct
-    // indexed_at via SQLite autoincrement-y ordering, and the page
-    // query is `ORDER BY indexed_at DESC`, so the 30th inserted row
-    // is the first on page 1.
+    // Seed 30 perfumes. We don't rely on insertion order to pick
+    // which perfume lands on which page — the query orders by
+    // `indexed_at DESC, uri DESC`, and a bulk insert loop like this
+    // one will land multiple rows in the same millisecond, so the
+    // `uri` tiebreaker is what actually decides page boundaries.
+    // The 30-row total is what we care about here: 24 on page 1 and
+    // 6 on page 2, regardless of which specific perfumes those are.
     for (let i = 0; i < 30; i += 1) {
       await seedPerfume(env, `Perfume ${String(i + 1).padStart(2, "0")}`);
     }
@@ -202,6 +218,31 @@ describe("/perfumes browse-all page (#122)", () => {
     // React comment markers so `Page 1 of` matches against any
     // interpolation-fragmented copy.
     expect(stripReactMarkers(html)).not.toContain("Page 1 of");
+  }, 60_000);
+
+  it("has no overlap or gaps across page 1 and page 2 even when indexed_at ties", async () => {
+    // Regression for the adversarial-review finding: `indexed_at` is
+    // `Date.now()` (ms), and a sequential-await loop can easily land
+    // multiple rows in the same millisecond. Without a stable
+    // tiebreaker, SQLite is free to return ties in different orders
+    // across `OFFSET 0` / `OFFSET 24` calls and page 1 ∪ page 2 can
+    // silently drop or duplicate a row. The `getRecentPerfumes` sort
+    // now includes `uri DESC` as a tiebreaker; this test proves the
+    // union is exactly the 30 seeded URIs with no duplicates.
+    for (let i = 0; i < 30; i += 1) {
+      await seedPerfume(env, `Perfume ${String(i + 1).padStart(2, "0")}`);
+    }
+    const page1Html = await renderPerfumesPage(undefined);
+    const page2Html = await renderPerfumesPage("2");
+    const page1 = tileUris(page1Html);
+    const page2 = tileUris(page2Html);
+    expect(page1).toHaveLength(24);
+    expect(page2).toHaveLength(6);
+    const union = new Set<string>([...page1, ...page2]);
+    expect(union.size).toBe(30);
+    // No URI appears on both pages.
+    const overlap = page1.filter((u) => page2.includes(u));
+    expect(overlap).toEqual([]);
   }, 60_000);
 
   it("clamps ?page=9999 to the last real page", async () => {
