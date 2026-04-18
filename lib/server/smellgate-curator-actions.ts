@@ -53,6 +53,7 @@ import {
   getPerfumeByUri,
   getPerfumeSubmissionByUri,
   getResolutionForSubmission,
+  searchPerfumes,
   type PendingRewrite,
 } from "../db/smellgate-queries";
 import { getAccountHandle } from "../db/queries";
@@ -276,6 +277,75 @@ async function loadHandlesForSubmissions(
     dids.map(async (did) => [did, await getAccountHandle(did)] as const),
   );
   return new Map(entries);
+}
+
+// ---------------------------------------------------------------------------
+// Canonical-candidate search for the duplicate picker (issue #139).
+//
+// The curator's "Mark duplicate" flow needs a list of canonical perfume
+// URIs to pick from. Before #139 the curator had to hand-paste an AT-URI
+// (discovered through the URL bar + a percent-decode dance). This
+// action is the server-side half of the typeahead: curator-gated,
+// returns top-N candidates from `searchPerfumes`, shaped as the tight
+// `CandidatePerfume` wire form so the response JSON stays small.
+//
+// Deliberately thin — no re-ranking, no NULL-creator hiding, nothing
+// that `searchPerfumes` doesn't already do. If the underlying query
+// returns zero rows, this returns `{ candidates: [] }` and the UI
+// shows a "no matches; paste URI manually" hint; the existing paste-
+// URI input remains the fallback.
+// ---------------------------------------------------------------------------
+
+export interface CandidatePerfume {
+  uri: string;
+  name: string;
+  house: string;
+  creator: string | null;
+  releaseYear: number | null;
+}
+
+export interface ListCanonicalCandidatesInput {
+  query: string;
+  /** Max candidates to return. Default 5; hard-capped at 25 to keep the
+   *  response small even if a client asks for too many. */
+  limit?: number;
+}
+
+export interface ListCanonicalCandidatesResult {
+  candidates: CandidatePerfume[];
+}
+
+const DEFAULT_CANDIDATE_LIMIT = 5;
+const MAX_CANDIDATE_LIMIT = 25;
+
+export async function listCanonicalCandidatesAction(
+  db: Db,
+  session: OAuthSession,
+  input: ListCanonicalCandidatesInput,
+): Promise<ListCanonicalCandidatesResult> {
+  requireCurator(session);
+  if (!input || typeof input.query !== "string") {
+    bad("query is required");
+  }
+  const trimmed = input.query.trim();
+  if (trimmed.length === 0) {
+    return { candidates: [] };
+  }
+  const requested = input.limit ?? DEFAULT_CANDIDATE_LIMIT;
+  if (!Number.isInteger(requested) || requested <= 0) {
+    bad("limit must be a positive integer");
+  }
+  const limit = Math.min(requested, MAX_CANDIDATE_LIMIT);
+  const rows = await searchPerfumes(db, trimmed, { limit });
+  return {
+    candidates: rows.map((r) => ({
+      uri: r.uri,
+      name: r.name,
+      house: r.house,
+      creator: r.creator,
+      releaseYear: r.release_year,
+    })),
+  };
 }
 
 // ---------------------------------------------------------------------------
