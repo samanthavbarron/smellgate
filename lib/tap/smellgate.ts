@@ -41,10 +41,6 @@ import { Kysely } from "kysely";
 import * as smellgate from "../lexicons/app/smellgate";
 import { isCurator } from "../curators";
 import type { DatabaseSchema } from "../db";
-import { countGraphemes } from "../graphemes";
-import commentLexicon from "../../lexicons/app/smellgate/comment.json";
-import descriptionLexicon from "../../lexicons/app/smellgate/description.json";
-import reviewLexicon from "../../lexicons/app/smellgate/review.json";
 
 // ---------------------------------------------------------------------------
 // Collection NSIDs (single source of truth). Mirrors the generated
@@ -67,31 +63,6 @@ export const SMELLGATE_COLLECTION_LIST: readonly string[] = Object.freeze(
 
 const VOTE_DIRECTIONS = new Set(["up", "down"]);
 const RESOLUTION_DECISIONS = new Set(["approved", "rejected", "duplicate"]);
-
-// ---------------------------------------------------------------------------
-// Body-length bounds for free-text fields (issues #189, #193, #196).
-//
-// These are defense-in-depth at the dispatcher layer mirroring the
-// server-action guards in `lib/server/smellgate-actions.ts`. We read
-// the `maxGraphemes` bound out of the lexicon JSON at module-load so
-// the number follows the lexicon rather than getting out of sync with
-// a hardcoded literal.
-//
-// `$safeParse` already enforces `maxGraphemes` and `minLength: 1`, but
-// whitespace-only bodies pass `minLength: 1` (graphemes, not
-// non-whitespace characters — see #185/#193/#196). We add an explicit
-// trim-then-minLength check here so direct PDS writes matching the
-// lexical bound but visually empty get dropped.
-// ---------------------------------------------------------------------------
-const REVIEW_BODY_MAX_GRAPHEMES: number = (
-  reviewLexicon as { defs: { main: { record: { properties: { body: { maxGraphemes: number } } } } } }
-).defs.main.record.properties.body.maxGraphemes;
-const DESCRIPTION_BODY_MAX_GRAPHEMES: number = (
-  descriptionLexicon as { defs: { main: { record: { properties: { body: { maxGraphemes: number } } } } } }
-).defs.main.record.properties.body.maxGraphemes;
-const COMMENT_BODY_MAX_GRAPHEMES: number = (
-  commentLexicon as { defs: { main: { record: { properties: { body: { maxGraphemes: number } } } } } }
-).defs.main.record.properties.body.maxGraphemes;
 
 // ---------------------------------------------------------------------------
 // Drop-site observability (#47).
@@ -482,10 +453,10 @@ async function handleReview(
   // check is already in `$safeParse`, but an explicit drop here gives a
   // cleaner debug log and keeps the dispatcher symmetrical with the
   // server-action guard in `postReviewAction`.
-  if (!validateBody(record.body, REVIEW_BODY_MAX_GRAPHEMES).ok) {
+  if (!validateBody(record.body).ok) {
     logDrop("bad_body", evt, uri, {
       field: "body",
-      reason: "empty-after-trim or over maxGraphemes",
+      reason: "empty-after-trim or forbidden-control-chars",
     });
     return;
   }
@@ -547,10 +518,10 @@ async function handleDescription(
   }
 
   // Issues #185, #189: empty-after-trim or over maxGraphemes.
-  if (!validateBody(record.body, DESCRIPTION_BODY_MAX_GRAPHEMES).ok) {
+  if (!validateBody(record.body).ok) {
     logDrop("bad_body", evt, uri, {
       field: "body",
-      reason: "empty-after-trim or over maxGraphemes",
+      reason: "empty-after-trim or forbidden-control-chars",
     });
     return;
   }
@@ -696,10 +667,10 @@ async function handleComment(
   }
 
   // Issue #196: empty-after-trim or over maxGraphemes.
-  if (!validateBody(record.body, COMMENT_BODY_MAX_GRAPHEMES).ok) {
+  if (!validateBody(record.body).ok) {
     logDrop("bad_body", evt, uri, {
       field: "body",
-      reason: "empty-after-trim or over maxGraphemes",
+      reason: "empty-after-trim or forbidden-control-chars",
     });
     return;
   }
@@ -815,35 +786,27 @@ function atUriCollection(uri: string): string | null {
 
 /**
  * `authority` (the DID) of an AT-URI, or `null` if the input is not a
- * parseable AT-URI. Used by the self-vote guard (#191): the description
- * URI's hostname is its author's DID — no DB round-trip needed.
+ * parseable AT-URI or uses a handle-authority rather than a DID.
+ * Used by the self-vote guard (#191): the description URI's hostname
+ * is its author's DID — no DB round-trip needed.
+ *
+ * Issue #203: `new AtUri("at://alice.bsky.social/...").hostname` returns
+ * the handle, not a DID. `evt.did` in the dispatcher is always a DID,
+ * so a handle-authority URI would bypass the equality comparison. In
+ * practice firehose events on the live network normalize to DID-
+ * authority, but we reject non-DID authorities here so a malformed
+ * upstream can't silently skip the guard.
  */
 function atUriAuthority(uri: string): string | null {
   try {
-    return new AtUri(uri).hostname;
+    const host = new AtUri(uri).hostname;
+    if (!host.startsWith("did:")) return null;
+    return host;
   } catch {
     return null;
   }
 }
 
-/**
- * Validate a free-text body: trim, reject empty / whitespace-only,
- * reject > maxGraphemes. Returns `{ ok: true, body }` on success (body
- * is the trimmed value — but we don't write the trimmed version back
- * to the cache because the dispatcher stores records verbatim; this is
- * only a gate). Returns `{ ok: false, reason }` on failure so the
- * caller can emit a single `logDrop` line.
- *
- * Whitespace-only rejection mirrors the server-action layer's
- * `rawBody.trim().length === 0` check (issues #185, #193, #196).
- *
- * We count graphemes with `Intl.Segmenter` via `countGraphemes` to
- * agree with the lexicon's `maxGraphemes` semantic. The `$safeParse`
- * already enforces `maxGraphemes` via the generated validator, so this
- * extra length check is belt-and-braces; the explicit drop here gives
- * a cleaner `logDrop` reason than the generic `lex_validate` when
- * debugging (issue #189).
- */
 /**
  * C0 control chars (except `\t`, `\n`, `\r`) plus DEL. Issues #188 /
  * #197: hostile or misbehaving third-party clients can write records
@@ -855,13 +818,20 @@ function atUriAuthority(uri: string): string | null {
  */
 const FORBIDDEN_CONTROL_CHARS_RE = /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/;
 
-function validateBody(
-  raw: unknown,
-  max: number,
-): { ok: true } | { ok: false } {
+/**
+ * Validate a free-text body: reject non-strings, empty / whitespace-
+ * only, and strings containing forbidden control chars. Issue #204:
+ * the `maxGraphemes` check this function used to do was unreachable
+ * because `$safeParse` upstream already enforces the lexicon's
+ * `maxGraphemes` and drops the record with `lex_validate` before we
+ * get here. Removed.
+ *
+ * Whitespace-only rejection mirrors the server-action layer's
+ * `rawBody.trim().length === 0` check (issues #185, #193, #196).
+ */
+function validateBody(raw: unknown): { ok: true } | { ok: false } {
   if (typeof raw !== "string") return { ok: false };
   if (raw.trim().length === 0) return { ok: false };
-  if (countGraphemes(raw) > max) return { ok: false };
   if (FORBIDDEN_CONTROL_CHARS_RE.test(raw)) return { ok: false };
   return { ok: true };
 }
