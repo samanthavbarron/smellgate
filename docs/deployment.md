@@ -26,8 +26,12 @@ Required in production:
 - `PRIVATE_KEY` — ES256 JWK JSON string for OAuth client assertion signing. Generate locally with `pnpm gen-key`, then set as a Fly secret. Rotate only via redeploy; never set at runtime.
 - `DATABASE_PATH` — path to the SQLite file on a mounted Fly volume, e.g. `/data/smellgate.db`.
 - `SMELLGATE_CURATOR_DIDS` — comma-separated DIDs of curator accounts. Production value: `did:plc:l6l3piyd3hywg76f2udorm53` (handle [`smellgate.bsky.social`](https://bsky.app/profile/smellgate.bsky.social)). A second curator DID for Sam will be appended once that account exists.
-- `TAP_URL` — Tap consumer's HTTP endpoint. Prefer the internal `*.flycast` address if Tap runs as its own Fly app.
-- `TAP_ADMIN_PASSWORD` — Tap webhook shared secret.
+- `TAP_URL` — Tap consumer's HTTP endpoint. Prefer the internal `*.flycast` address if Tap runs as its own Fly app. **Not required for the first production deploy** — the app will come up healthy with an empty cache until Tap is hosted (see issue #148).
+- `TAP_ADMIN_PASSWORD` — Tap webhook shared secret. Same note as `TAP_URL`.
+
+Build-time:
+
+- `GIT_COMMIT` — passed as a Docker `--build-arg` by `.github/workflows/deploy.yml` (value: `${{ github.sha }}`). Baked into the image as an env var so `GET /api/health` can surface the deployed revision.
 
 Must stay **unset** in production:
 
@@ -39,24 +43,50 @@ Optional:
 
 ## DNS
 
-- `_lexicon.smellgate.app` TXT record, value `did=did:plc:l6l3piyd3hywg76f2udorm53`, is already set (confirmed via DNS-over-HTTPS). This declares the authority for `app.smellgate.*` lexicons. See [docs/lexicons.md](./lexicons.md) under "Lexicon authority publication".
-- Once a custom apex (e.g. `smellgate.app`) is pointed at Fly, update `PUBLIC_URL` to the custom domain and redeploy. OAuth client metadata is keyed off `PUBLIC_URL`, so changing it mid-session will invalidate existing OAuth sessions until clients refresh.
+- `_lexicon.smellgate.app` TXT record, value `did=did:plc:l6l3piyd3hywg76f2udorm53`, was set and confirmed live (2026-04-17) via DNS-over-HTTPS. This declares the authority for `app.smellgate.*` lexicons. See [docs/lexicons.md](./lexicons.md) under "Lexicon authority publication".
+- The first production deploy uses `smellgate.fly.dev` as `PUBLIC_URL`. Pointing a custom domain (e.g. `smellgate.app`) at Fly is a follow-up — once that's done, update `PUBLIC_URL` to the custom domain and redeploy. OAuth client metadata is keyed off `PUBLIC_URL`, so changing it mid-session will invalidate existing OAuth sessions until clients refresh.
 
 ## Deploy workflow
 
-A GitHub Actions workflow at `.github/workflows/deploy.yml` (not yet committed — tracked as issue #103) will:
+The GitHub Actions workflow at [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) runs `flyctl deploy --remote-only` on every push to `main`.
 
-- Deploy previews on every pull request to a preview app, e.g. `smellgate-pr-<n>.fly.dev`.
-- Deploy production on every merge to `main`, gated on the existing `lint / typecheck / test / build` check (never bypass branch protection).
-- Use `superfly/flyctl-actions/setup-flyctl@master` (Fly's official GitHub Action).
+- **No preview deploys in v1.** The Phase 5 shape was deliberately kept to production-only: every merge to `main` triggers a production deploy. The cost of not being able to visually smoke-test a PR against a preview environment is low while the app is pre-launch, and the PR CI check (`lint / typecheck / test / build`) is already required by branch protection on `main`.
+- The workflow uses `superfly/flyctl-actions/setup-flyctl@master` (Fly's official GitHub Action).
+- The workflow deliberately does NOT re-run the CI check — branch protection enforces it at merge time, so duplicating it here would just add latency and create a race.
+- The workflow passes `--build-arg GIT_COMMIT=${{ github.sha }}` so the image bakes in the deployed revision; `/api/health` echoes it back.
 
-Repository secrets required in GitHub Actions:
+Repository secrets required in GitHub Actions (on the `production` environment):
 
-- `FLY_API_TOKEN` — a Fly deploy token scoped **to this app only**, not an org-wide token.
+- `FLY_ACCESS_TOKEN` — a Fly deploy token scoped **to this app only**, not an org-wide token. Created via `fly tokens create deploy`. Current `flyctl` reads `FLY_ACCESS_TOKEN` natively; no mapping from the older `FLY_API_TOKEN` name is needed.
+
+## First-time Fly setup (one-shot manual steps)
+
+Before the workflow can deploy, the Fly app, volume, and secrets must exist:
+
+```sh
+# Create the app shell (skip `flyctl launch`'s auto-generated fly.toml — we
+# already have one committed; use `fly apps create` instead).
+flyctl apps create smellgate
+
+# Persistent SQLite volume in the primary region.
+flyctl volumes create smellgate_data --size 1 --region iad --app smellgate
+
+# Secrets the app needs at runtime. PRIVATE_KEY comes from `pnpm gen-key`.
+flyctl secrets set --app smellgate \
+  PUBLIC_URL=https://smellgate.fly.dev \
+  PRIVATE_KEY="$(pnpm -s gen-key)" \
+  SMELLGATE_CURATOR_DIDS=did:plc:l6l3piyd3hywg76f2udorm53
+
+# Tap secrets can wait until issue #148 is resolved.
+```
+
+After these run once, every subsequent merge to `main` deploys automatically.
 
 ## Tap consumer hosting
 
-Tap subscribes to the atproto firehose and POSTs record events to `/api/webhook` on the Next.js app. On Fly there are two reasonable shapes:
+**Deferred to [issue #148](https://github.com/samanthavbarron/smellgate/issues/148).** The first production deploy shipped here runs only the Next.js app; no firehose consumer is attached, so the read cache starts and stays empty until Tap is wired up. The Next.js webhook at `/api/webhook` is live and waiting.
+
+When #148 is picked up, two reasonable shapes (unchanged from the original design):
 
 1. **Separate Fly app** — `smellgate-tap` in the same org/region, with `TAP_URL` set to its internal `*.flycast` address so webhook traffic never leaves the Fly private network. Cleanest isolation, slightly more machines.
 2. **Co-located process** — run Tap as a second process inside the same Fly machine via `fly.toml`'s multi-process support. Fewer machines, tighter coupling.

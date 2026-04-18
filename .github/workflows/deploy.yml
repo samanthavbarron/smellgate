@@ -1,0 +1,46 @@
+name: Deploy
+
+# Production deploys only. No preview deploys on PRs (per Phase 5 decision:
+# the cost of not being able to visually smoke-test a PR before merge is low
+# for v1, and the CI check `lint / typecheck / test / build` is required by
+# branch protection on `main`, so merges to main are already gated).
+#
+# Deploy runs on every push to main (i.e. every merged PR).
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  # Serialize deploys so two rapid merges don't race each other to Fly.
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy to Fly.io
+    runs-on: ubuntu-latest
+    # The `production` environment is where FLY_ACCESS_TOKEN lives. Using it
+    # here means this job is gated by any protection rules we later add to
+    # the environment (required reviewers, wait timers, etc.).
+    environment: production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up flyctl
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Deploy to Fly
+        run: |
+          flyctl deploy --remote-only --build-arg "GIT_COMMIT=${GITHUB_SHA}"
+        env:
+          # flyctl reads FLY_ACCESS_TOKEN natively since it was renamed from
+          # FLY_API_TOKEN. The token is an app-scoped deploy token created
+          # via `fly tokens create deploy`, stored as a GitHub Actions secret
+          # on the `production` environment.
+          FLY_ACCESS_TOKEN: ${{ secrets.FLY_ACCESS_TOKEN }}
