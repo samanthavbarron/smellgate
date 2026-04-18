@@ -1,7 +1,7 @@
 {
   "name": "smellgate",
   "image": "mcr.microsoft.com/devcontainers/universal:2-linux",
-  "postCreateCommand": "curl -fsSL https://fly.io/install.sh | sh",
+  "postCreateCommand": "curl -fsSL https://fly.io/install.sh | sh && npm install -g @anthropic-ai/claude-code",
   "remoteEnv": {
     "PATH": "${containerEnv:PATH}:/home/codespace/.fly/bin"
   }
