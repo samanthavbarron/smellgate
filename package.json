@@ -23,7 +23,8 @@
     "typecheck": "pnpm build:lex && tsc --noEmit",
     "test": "vitest run tests/unit",
     "test:integration": "vitest run tests/integration",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:e2e:local": "tsx tests/e2e/run-local.ts"
   },
   "dependencies": {
     "@atproto/common-web": "^0.4.11",
