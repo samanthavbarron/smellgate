@@ -426,10 +426,15 @@ export async function searchPerfumes(
  *   here because we want exact-string equality, not substring —
  *   "Vespertine EDP" is NOT the same perfume as "Vespertine" and we
  *   shouldn't pretend otherwise.
- * - Both sides trimmed before compare. NFC normalization is skipped
- *   in v1 — the existing seed catalog + the `requireBoundedIdentifier`
- *   write guard on the inbound side already produce consistent shapes,
- *   so unicode drift is a theoretical rather than observed risk.
+ * - Both sides trimmed before compare — inputs via JS `.trim()`,
+ *   stored columns via SQL `trim(col)`. The Tap dispatcher writes the
+ *   canonical record's `name` / `house` through as-authored, so a
+ *   curator-approved perfume with trailing whitespace in the cache
+ *   would otherwise miss a legitimate match. NFC normalization is
+ *   skipped in v1 — the existing seed catalog + the
+ *   `requireBoundedIdentifier` write guard on the inbound side
+ *   already produce consistent shapes, so unicode drift is a
+ *   theoretical rather than observed risk.
  * - `name`/`house` are short identifier strings (`requireBoundedIdentifier`
  *   bounds them at 200 graphemes) so the table-scan cost is fine at
  *   the current catalog size (75 seeded + slow organic growth). A
@@ -460,8 +465,8 @@ export async function findCanonicalByNameHouse(
     .selectAll()
     .where(
       (eb) =>
-        sql<boolean>`lower(${eb.ref("smellgate_perfume.name")}) = lower(${n})
-          and lower(${eb.ref("smellgate_perfume.house")}) = lower(${h})`,
+        sql<boolean>`lower(trim(${eb.ref("smellgate_perfume.name")})) = lower(${n})
+          and lower(trim(${eb.ref("smellgate_perfume.house")})) = lower(${h})`,
     )
     .orderBy("indexed_at", "desc")
     .orderBy("uri", "desc")

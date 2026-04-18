@@ -955,6 +955,23 @@ describe("smellgate-queries", () => {
       expect(got.map((p) => p.uri)).toEqual([pUri]);
     });
 
+    // The Tap dispatcher writes canonical records' `name` / `house`
+    // as-authored (no trim), so a curator PDS entry with trailing
+    // whitespace would otherwise miss a legitimate trimmed submission
+    // input. SQL-side `trim(col)` closes that gap.
+    it("trims the stored column too, not just the input", async () => {
+      const pUri = await seedPerfume(env.db, {
+        name: "Vespertine ",
+        house: " Maison Vésper",
+      });
+      const got = await env.q.findCanonicalByNameHouse(
+        env.db.getDb(),
+        "Vespertine",
+        "Maison Vésper",
+      );
+      expect(got.map((p) => p.uri)).toEqual([pUri]);
+    });
+
     it("does not LIKE-wildcard: a literal % in the query matches only a stored %", async () => {
       // Substring attempts must fail. "Vespertine EDP" is NOT the same
       // catalog entry as "Vespertine" — the match is exact equality.
