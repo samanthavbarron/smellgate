@@ -4,7 +4,7 @@
  *
  * One-shot seeder that publishes the synthetic catalog from
  * `tests/fixtures/seed-catalog.json` into a curator PDS as
- * `com.smellgate.perfume` records.
+ * `app.smellgate.perfume` records.
  *
  * ============================================================
  * DO NOT RUN AGAINST A REAL PDS UNTIL THE CURATOR ACCOUNT IS
@@ -51,7 +51,7 @@
  * updates the existing record in place. No pre-flight `list` / no
  * name+house fuzzy match.
  *
- * The lexicon (`lexicons/com/smellgate/perfume.json`) specifies
+ * The lexicon (`lexicons/app/smellgate/perfume.json`) specifies
  * `record.key: "tid"`, so the rkey must conform to the TID shape
  * (13 characters, base32-sortable, with the first character drawn
  * from the low-16 subset per `@atproto/syntax`'s `isValidTid`).
@@ -72,7 +72,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import type { AtIdentifierString } from '@atproto/lex'
-import type { Main as PerfumeMain } from '../lib/lexicons/com/smellgate/perfume.defs'
+import type { Main as PerfumeMain } from '../lib/lexicons/app/smellgate/perfume.defs'
 
 // Base32-sortable alphabet, as used by `@atproto/common-web` for TIDs.
 // 32 characters; order is preserved when strings are compared
@@ -232,7 +232,7 @@ async function runLive(): Promise<void> {
   // doesn't spin up a SQLite connection or pull in Next-adjacent modules.
   const { getOAuthClient } = await import('../lib/auth/client')
   const { Client } = await import('@atproto/lex')
-  const com = await import('../lib/lexicons/com')
+  const app = await import('../lib/lexicons/app')
 
   const curatorDid = process.env.SMELLGATE_CURATOR_DID
   if (!curatorDid) {
@@ -279,7 +279,7 @@ async function runLive(): Promise<void> {
 
   // The typed `put` helper takes `Omit<Infer<T>, '$type'>` and
   // re-attaches the `$type` itself. Seed entries already carry
-  // `$type: "com.smellgate.perfume"` from the fixture so we strip it
+  // `$type: "app.smellgate.perfume"` from the fixture so we strip it
   // here before handing the body off.
   type PerfumeInput = Omit<PerfumeMain, '$type'>
 
@@ -288,7 +288,7 @@ async function runLive(): Promise<void> {
     const { $type: _drop, ...input } = pair.record as Record<string, unknown>
     void _drop
     await lexClient.put(
-      com.smellgate.perfume.main,
+      app.smellgate.perfume.main,
       input as unknown as PerfumeInput,
       { repo, rkey: pair.rkey },
     )

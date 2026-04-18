@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { $safeParse } from '../../../lib/lexicons/com/smellgate/perfumeSubmission'
+import { $safeParse } from '../../../lib/lexicons/app/smellgate/perfumeSubmission'
 import { loadFixturesForRecord } from './_helpers'
 
 const { valid, invalid } = loadFixturesForRecord('perfumeSubmission')
 
-describe('com.smellgate.perfumeSubmission validator', () => {
+describe('app.smellgate.perfumeSubmission validator', () => {
   it('has at least one valid fixture and two invalid fixtures', () => {
     expect(valid.length).toBeGreaterThanOrEqual(1)
     expect(invalid.length).toBeGreaterThanOrEqual(2)

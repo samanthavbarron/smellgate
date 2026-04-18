@@ -1,0 +1,6 @@
+{
+  "$type": "app.smellgate.perfumeSubmission",
+  "name": "Test Submission Bottle",
+  "notes": ["jasmine"],
+  "createdAt": "2024-02-01T08:00:00.000Z"
+}

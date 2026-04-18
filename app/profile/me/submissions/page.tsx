@@ -2,7 +2,7 @@
  * My submissions page (issue #131).
  *
  * Route: `/profile/me/submissions` — server component. Lists the
- * authenticated user's own `com.smellgate.perfumeSubmission` records,
+ * authenticated user's own `app.smellgate.perfumeSubmission` records,
  * read live from their PDS (not the app cache), annotated with
  * resolution state (`pending` / `approved` / `rejected` / `duplicate`).
  *
@@ -13,7 +13,7 @@
  * picks them up.
  *
  * Data shape: `listMySubmissionsAction` fetches from the user's PDS
- * via the lex client's `list(com.smellgate.perfumeSubmission.main)`,
+ * via the lex client's `list(app.smellgate.perfumeSubmission.main)`,
  * then cross-references each record against the cached
  * `smellgate_perfume_submission_resolution` table. See the action for
  * the cache-lag note: a fresh approval may show as `pending` until

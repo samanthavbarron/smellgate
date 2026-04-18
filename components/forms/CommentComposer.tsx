@@ -3,15 +3,15 @@
 /**
  * Comment composer (Phase 4.D, issue #69).
  *
- * Flat reply on a `com.smellgate.review`. Posts a
- * `com.smellgate.comment` via `/api/smellgate/comment` and, on
+ * Flat reply on a `app.smellgate.review`. Posts a
+ * `app.smellgate.comment` via `/api/smellgate/comment` and, on
  * success, redirects to the parent perfume detail page (the review's
  * perfume — the server component that renders this form already knows
  * that URL and passes it in as `redirectTo`).
  *
  * Why a plain client component + fetch instead of a server action:
  * the Phase 3 POST route handlers ARE the server boundary for
- * `com.smellgate.*` writes. Wrapping them again in a `"use server"`
+ * `app.smellgate.*` writes. Wrapping them again in a `"use server"`
  * action would only add a layer. See PR #69 body for the full
  * rationale. Same pattern for all six composers in this directory.
  */

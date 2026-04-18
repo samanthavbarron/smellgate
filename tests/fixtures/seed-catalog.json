@@ -1,7 +1,7 @@
 [
   {
     "_seed": { "synthetic": true, "id": "seed-001" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Vespertine",
     "house": "Maison Vésper",
     "creator": "Jeanne Castel",
@@ -12,7 +12,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-002" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Cendres de Novembre",
     "house": "Atelier des Cendres",
     "creator": "Theodor Vrabec",
@@ -23,7 +23,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-003" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Hortus Solstice",
     "house": "Hortus Borealis",
     "releaseYear": 2019,
@@ -33,7 +33,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-004" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Pelerine Blanche",
     "house": "Maison Vésper",
     "creator": "Aurélie Hainaut",
@@ -44,7 +44,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-005" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Courier 47",
     "house": "Parfumerie Ostraka",
     "creator": "Mikhail Varenne",
@@ -55,7 +55,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-006" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Zephyr en Saison",
     "house": "Studio Pneuma",
     "releaseYear": 2021,
@@ -65,7 +65,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-007" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Nocturne de Corbeau",
     "house": "Atelier des Cendres",
     "creator": "Theodor Vrabec",
@@ -76,7 +76,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-008" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Signalman",
     "house": "North Line Parfums",
     "creator": "Edmund Halse",
@@ -87,7 +87,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-009" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Limonaia",
     "house": "Fiori di Nantola",
     "releaseYear": 2014,
@@ -97,7 +97,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-010" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Tramontane",
     "house": "Maison Vésper",
     "creator": "Jeanne Castel",
@@ -108,7 +108,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-011" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Boulangerie 04h",
     "house": "Studio Pneuma",
     "creator": "Nour el Ghazal",
@@ -119,7 +119,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-012" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Rivière Basse",
     "house": "Hortus Borealis",
     "releaseYear": 2008,
@@ -129,7 +129,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-013" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Santal Obscur",
     "house": "Parfumerie Ostraka",
     "creator": "Mikhail Varenne",
@@ -140,7 +140,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-014" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Eglantine No. 3",
     "house": "Rousselot et Fils",
     "creator": "Claire Rousselot",
@@ -151,7 +151,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-015" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Fondant Salé",
     "house": "Sucrerie Quérac",
     "releaseYear": 2017,
@@ -161,7 +161,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-016" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Oakline",
     "house": "North Line Parfums",
     "creator": "Edmund Halse",
@@ -172,7 +172,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-017" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Ciel Aplati",
     "house": "Studio Pneuma",
     "creator": "Nour el Ghazal",
@@ -183,7 +183,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-018" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Cuir d'Atelier",
     "house": "Maison Vésper",
     "releaseYear": 1969,
@@ -193,7 +193,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-019" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Grand Thé Brumeux",
     "house": "Fiori di Nantola",
     "creator": "Lia Borromeo",
@@ -204,7 +204,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-020" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Villa Écarlate",
     "house": "Rousselot et Fils",
     "creator": "Claire Rousselot",
@@ -215,7 +215,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-021" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Bruyère Noire",
     "house": "Atelier des Cendres",
     "releaseYear": 2002,
@@ -225,7 +225,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-022" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Petit Matin d'Hiver",
     "house": "Maison Vésper",
     "creator": "Aurélie Hainaut",
@@ -236,7 +236,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-023" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Cavalier Sec",
     "house": "North Line Parfums",
     "creator": "Edmund Halse",
@@ -247,7 +247,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-024" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Coquelicot 33",
     "house": "Parfumerie Ostraka",
     "releaseYear": 1933,
@@ -257,7 +257,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-025" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Quinine Tonic",
     "house": "Studio Pneuma",
     "releaseYear": 2016,
@@ -267,7 +267,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-026" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Mémoire Basse",
     "house": "Maison Vésper",
     "creator": "Jeanne Castel",
@@ -278,7 +278,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-027" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Fève Tardive",
     "house": "Sucrerie Quérac",
     "creator": "Mathilde Quérac",
@@ -289,7 +289,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-028" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Verger 83",
     "house": "Rousselot et Fils",
     "releaseYear": 1983,
@@ -299,7 +299,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-029" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Sphagnum",
     "house": "Hortus Borealis",
     "creator": "Ivo Kortelainen",
@@ -310,7 +310,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-030" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Marée Descendante",
     "house": "Studio Pneuma",
     "creator": "Nour el Ghazal",
@@ -321,7 +321,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-031" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Clair-Obscur",
     "house": "Maison Vésper",
     "releaseYear": 1975,
@@ -331,7 +331,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-032" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Aqua Ferruginosa",
     "house": "Fiori di Nantola",
     "creator": "Lia Borromeo",
@@ -342,7 +342,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-033" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Ordre du Midi",
     "house": "Parfumerie Ostraka",
     "creator": "Mikhail Varenne",
@@ -353,7 +353,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-034" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Frangipanier de Fin d'Année",
     "house": "Isla Pleroma",
     "creator": "Rosalinda Obregón",
@@ -364,7 +364,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-035" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Monsoon Courtyard",
     "house": "Isla Pleroma",
     "releaseYear": 2015,
@@ -374,7 +374,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-036" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Petite Ombre Verte",
     "house": "Hortus Borealis",
     "releaseYear": 1998,
@@ -384,7 +384,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-037" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Bougie 22",
     "house": "Atelier des Cendres",
     "creator": "Theodor Vrabec",
@@ -395,7 +395,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-038" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Cactus de Serre",
     "house": "Studio Pneuma",
     "releaseYear": 2024,
@@ -405,7 +405,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-039" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Chèvrefeuille Tardif",
     "house": "Rousselot et Fils",
     "creator": "Claire Rousselot",
@@ -416,7 +416,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-040" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Orchard Keeper",
     "house": "North Line Parfums",
     "releaseYear": 1979,
@@ -426,7 +426,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-041" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Encens de Glacier",
     "house": "Atelier des Cendres",
     "creator": "Theodor Vrabec",
@@ -437,7 +437,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-042" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Papyrus & Palme",
     "house": "Isla Pleroma",
     "creator": "Rosalinda Obregón",
@@ -448,7 +448,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-043" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Sel d'Argent",
     "house": "Maison Vésper",
     "releaseYear": 1999,
@@ -458,7 +458,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-044" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Veille de Bal",
     "house": "Rousselot et Fils",
     "creator": "Claire Rousselot",
@@ -469,7 +469,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-045" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Cumin & Carbone",
     "house": "Parfumerie Ostraka",
     "releaseYear": 1981,
@@ -479,7 +479,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-046" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Passiflore Bleue",
     "house": "Isla Pleroma",
     "releaseYear": 2019,
@@ -489,7 +489,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-047" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Fumée d'Orge",
     "house": "Sucrerie Quérac",
     "creator": "Mathilde Quérac",
@@ -500,7 +500,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-048" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Fougère du Capitaine",
     "house": "North Line Parfums",
     "creator": "Edmund Halse",
@@ -511,7 +511,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-049" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Amande Givrée",
     "house": "Sucrerie Quérac",
     "releaseYear": 2007,
@@ -521,7 +521,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-050" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Suède Fauve",
     "house": "Maison Vésper",
     "creator": "Aurélie Hainaut",
@@ -532,7 +532,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-051" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Gélée de Menthe",
     "house": "Studio Pneuma",
     "releaseYear": 2013,
@@ -542,7 +542,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-052" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Vesper 1930",
     "house": "Maison Vésper",
     "creator": "Jeanne Castel",
@@ -553,7 +553,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-053" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Brique Chaude",
     "house": "Atelier des Cendres",
     "releaseYear": 2001,
@@ -563,7 +563,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-054" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Verre Fumé",
     "house": "Parfumerie Ostraka",
     "creator": "Mikhail Varenne",
@@ -574,7 +574,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-055" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Ciboulette",
     "house": "Hortus Borealis",
     "creator": "Ivo Kortelainen",
@@ -585,7 +585,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-056" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Nuit de Tanger",
     "house": "Parfumerie Ostraka",
     "releaseYear": 1976,
@@ -595,7 +595,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-057" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Pensée Sauvage",
     "house": "Rousselot et Fils",
     "releaseYear": 1940,
@@ -605,7 +605,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-058" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Éclair de Pomme",
     "house": "Sucrerie Quérac",
     "releaseYear": 1996,
@@ -615,7 +615,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-059" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Hinoki 02h",
     "house": "Studio Pneuma",
     "creator": "Nour el Ghazal",
@@ -626,7 +626,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-060" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Cigale d'Août",
     "house": "Fiori di Nantola",
     "creator": "Lia Borromeo",
@@ -637,7 +637,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-061" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Marché aux Fleurs",
     "house": "Maison Vésper",
     "releaseYear": 1972,
@@ -647,7 +647,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-062" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Ardoise Mouillée",
     "house": "Hortus Borealis",
     "releaseYear": 2010,
@@ -657,7 +657,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-063" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Chypre de Narbonne",
     "house": "Fiori di Nantola",
     "releaseYear": 1961,
@@ -667,7 +667,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-064" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Boulot d'Hiver",
     "house": "North Line Parfums",
     "creator": "Edmund Halse",
@@ -678,7 +678,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-065" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Minuit Morganatique",
     "house": "Maison Vésper",
     "creator": "Aurélie Hainaut",
@@ -689,7 +689,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-066" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Pluie sur Figuier",
     "house": "Isla Pleroma",
     "creator": "Rosalinda Obregón",
@@ -700,7 +700,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-067" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Camphre No. 9",
     "house": "Atelier des Cendres",
     "creator": "Theodor Vrabec",
@@ -711,7 +711,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-068" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Verveine Dimanche",
     "house": "Fiori di Nantola",
     "releaseYear": 2006,
@@ -721,7 +721,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-069" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Crinoline",
     "house": "Rousselot et Fils",
     "creator": "Claire Rousselot",
@@ -732,7 +732,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-070" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Citron Brûlé",
     "house": "Sucrerie Quérac",
     "creator": "Mathilde Quérac",
@@ -743,7 +743,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-071" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Forge Froide",
     "house": "North Line Parfums",
     "releaseYear": 1993,
@@ -753,7 +753,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-072" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Géranium Rose",
     "house": "Parfumerie Ostraka",
     "releaseYear": 1959,
@@ -763,7 +763,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-073" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Enfance en Bois",
     "house": "Hortus Borealis",
     "creator": "Ivo Kortelainen",
@@ -774,7 +774,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-074" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Marzipan Ancien",
     "house": "Sucrerie Quérac",
     "releaseYear": 1946,
@@ -784,7 +784,7 @@
   },
   {
     "_seed": { "synthetic": true, "id": "seed-075" },
-    "$type": "com.smellgate.perfume",
+    "$type": "app.smellgate.perfume",
     "name": "Dérive Polaire",
     "house": "Atelier des Cendres",
     "creator": "Theodor Vrabec",

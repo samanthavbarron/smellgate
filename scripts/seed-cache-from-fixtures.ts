@@ -18,7 +18,7 @@
  *      at module load. The DID is a placeholder; nothing on the real
  *      network matches it.
  *   3. For each seed entry, builds a synthetic `RecordEvent` for a
- *      `com.smellgate.perfume` create and calls
+ *      `app.smellgate.perfume` create and calls
  *      `dispatchSmellgateEvent`, which is the same code path the Tap
  *      firehose uses in production. This means the cache rows written
  *      here are shape-identical to live rows.
@@ -97,7 +97,7 @@ function perfumeRkey(seedId: string): string {
 function buildPerfumeEvent(entry: SeedEntry, seedId: string): RecordEvent {
   const rkey = perfumeRkey(seedId);
   const record = {
-    $type: "com.smellgate.perfume",
+    $type: "app.smellgate.perfume",
     name: entry.name,
     house: entry.house,
     creator: entry.creator,
@@ -112,7 +112,7 @@ function buildPerfumeEvent(entry: SeedEntry, seedId: string): RecordEvent {
     action: "create",
     did: DEV_CURATOR_DID,
     rev: "dev-seed",
-    collection: "com.smellgate.perfume",
+    collection: "app.smellgate.perfume",
     rkey,
     record,
     cid: fakeCid(`perfume-${seedId}`),
@@ -136,7 +136,7 @@ function buildReviewEvent(
   ];
   const ratings = [7, 8, 6, 9, 7, 8];
   const record = {
-    $type: "com.smellgate.review",
+    $type: "app.smellgate.review",
     perfume: { uri: perfumeUri, cid: perfumeCid },
     rating: ratings[idx % ratings.length],
     sillage: 3,
@@ -150,7 +150,7 @@ function buildReviewEvent(
     action: "create",
     did: DEV_REVIEWER_DID,
     rev: "dev-seed",
-    collection: "com.smellgate.review",
+    collection: "app.smellgate.review",
     rkey,
     record,
     cid: fakeCid(`review-${idx}`),

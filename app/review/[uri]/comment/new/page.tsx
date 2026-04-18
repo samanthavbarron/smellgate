@@ -2,7 +2,7 @@
  * Comment composer page (Phase 4.D, issue #69).
  *
  * Server component for writing a flat reply on a
- * `com.smellgate.review`. The URL segment is the review's AT-URI,
+ * `app.smellgate.review`. The URL segment is the review's AT-URI,
  * URL-encoded (same convention as `/perfume/[uri]`).
  *
  * We load the review row via `getReviewByUri` to recover its parent

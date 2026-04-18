@@ -2,7 +2,7 @@
  * POST /api/smellgate/submission — propose a new perfume.
  *
  * Thin wrapper around `submitPerfumeAction`. Any authenticated user may
- * submit; no curator check. Writes a `com.smellgate.perfumeSubmission`
+ * submit; no curator check. Writes a `app.smellgate.perfumeSubmission`
  * to the caller's own PDS and returns the new AT-URI.
  */
 

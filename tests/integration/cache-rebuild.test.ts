@@ -14,7 +14,7 @@
  *      The curator DID is injected into the process environment via
  *      `SMELLGATE_CURATOR_DIDS` before the Tap dispatcher module is
  *      loaded, so the real `isCurator()` gate accepts her records.
- *   3. Write a known set of `com.smellgate.*` records to each PDS repo
+ *   3. Write a known set of `app.smellgate.*` records to each PDS repo
  *      using `com.atproto.repo.createRecord` authenticated with the
  *      SeedClient-issued JWTs. (Using OAuth here would be overkill —
  *      `oauth-pds.test.ts` already covers that path; this test is
@@ -201,9 +201,9 @@ describe("cache rebuild from network", () => {
       const perfume = await createRecord(
         pds,
         curator,
-        "com.smellgate.perfume",
+        "app.smellgate.perfume",
         {
-          $type: "com.smellgate.perfume",
+          $type: "app.smellgate.perfume",
           name: "Aventus",
           house: "Creed",
           creator: "Olivier Creed",
@@ -217,9 +217,9 @@ describe("cache rebuild from network", () => {
       const submission = await createRecord(
         pds,
         user,
-        "com.smellgate.perfumeSubmission",
+        "app.smellgate.perfumeSubmission",
         {
-          $type: "com.smellgate.perfumeSubmission",
+          $type: "app.smellgate.perfumeSubmission",
           name: "Spicebomb",
           house: "Viktor & Rolf",
           notes: ["chili", "tobacco"],
@@ -231,9 +231,9 @@ describe("cache rebuild from network", () => {
       const shelfItem = await createRecord(
         pds,
         user,
-        "com.smellgate.shelfItem",
+        "app.smellgate.shelfItem",
         {
-          $type: "com.smellgate.shelfItem",
+          $type: "app.smellgate.shelfItem",
           perfume: { uri: perfume.uri, cid: perfume.cid },
           acquiredAt: nowIso(),
           bottleSizeMl: 100,
@@ -242,8 +242,8 @@ describe("cache rebuild from network", () => {
         },
       );
 
-      const review = await createRecord(pds, user, "com.smellgate.review", {
-        $type: "com.smellgate.review",
+      const review = await createRecord(pds, user, "app.smellgate.review", {
+        $type: "app.smellgate.review",
         perfume: { uri: perfume.uri, cid: perfume.cid },
         rating: 9,
         sillage: 4,
@@ -255,24 +255,24 @@ describe("cache rebuild from network", () => {
       const description = await createRecord(
         pds,
         user,
-        "com.smellgate.description",
+        "app.smellgate.description",
         {
-          $type: "com.smellgate.description",
+          $type: "app.smellgate.description",
           perfume: { uri: perfume.uri, cid: perfume.cid },
           body: "Smells like a sunny day.",
           createdAt: nowIso(),
         },
       );
 
-      const vote = await createRecord(pds, user, "com.smellgate.vote", {
-        $type: "com.smellgate.vote",
+      const vote = await createRecord(pds, user, "app.smellgate.vote", {
+        $type: "app.smellgate.vote",
         subject: { uri: description.uri, cid: description.cid },
         direction: "up",
         createdAt: nowIso(),
       });
 
-      const comment = await createRecord(pds, user, "com.smellgate.comment", {
-        $type: "com.smellgate.comment",
+      const comment = await createRecord(pds, user, "app.smellgate.comment", {
+        $type: "app.smellgate.comment",
         subject: { uri: review.uri, cid: review.cid },
         body: "Agreed.",
         createdAt: nowIso(),
@@ -379,8 +379,8 @@ describe("cache rebuild from network", () => {
   it("dry-run reports counts without dropping the cache", async () => {
     // Minimal sanity check: populate one row, run a dry-run rebuild,
     // verify the row is still there and the report lists 1 record.
-    const perfume = await createRecord(pds, curator, "com.smellgate.perfume", {
-      $type: "com.smellgate.perfume",
+    const perfume = await createRecord(pds, curator, "app.smellgate.perfume", {
+      $type: "app.smellgate.perfume",
       name: "Dry Run Rose",
       house: "Test",
       notes: ["rose"],

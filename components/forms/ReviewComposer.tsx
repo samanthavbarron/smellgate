@@ -3,7 +3,7 @@
 /**
  * Review composer (Phase 4.D, issue #69).
  *
- * Writes a `com.smellgate.review` record for the target perfume via
+ * Writes a `app.smellgate.review` record for the target perfume via
  * `/api/smellgate/review`, then redirects back to the perfume detail
  * page. See CommentComposer header for the "client component +
  * fetch" rationale.

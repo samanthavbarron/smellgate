@@ -22,7 +22,7 @@ export interface DatabaseSchema {
   auth_session: AuthSessionTable;
   account: AccountTable;
   status: StatusTable;
-  // Phase 2 read cache for com.smellgate.* records
+  // Phase 2 read cache for app.smellgate.* records
   smellgate_perfume: SmellgatePerfumeTable;
   smellgate_perfume_note: SmellgatePerfumeNoteTable;
   smellgate_perfume_submission: SmellgatePerfumeSubmissionTable;
@@ -61,7 +61,7 @@ export interface StatusTable {
 }
 
 // ---------------------------------------------------------------------------
-// com.smellgate.* read-cache tables (Phase 2).
+// app.smellgate.* read-cache tables (Phase 2).
 //
 // Conventions:
 // - `uri` is the AT-URI of the record and the primary key.

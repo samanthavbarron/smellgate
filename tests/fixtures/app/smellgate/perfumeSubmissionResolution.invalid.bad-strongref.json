@@ -1,0 +1,9 @@
+{
+  "$type": "app.smellgate.perfumeSubmissionResolution",
+  "submission": {
+    "uri": "not-an-at-uri",
+    "cid": "not-a-cid"
+  },
+  "decision": "approved",
+  "createdAt": "2024-02-05T10:00:00.000Z"
+}

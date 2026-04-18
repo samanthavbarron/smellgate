@@ -1,9 +1,0 @@
-{
-  "$type": "com.smellgate.vote",
-  "subject": {
-    "uri": "at://did:plc:fixtureusersxxxxxxxxxxxxx/com.smellgate.description/3kxyz333ccc",
-    "cid": "bafyreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku"
-  },
-  "direction": "up",
-  "createdAt": "2024-02-14T12:00:00.000Z"
-}

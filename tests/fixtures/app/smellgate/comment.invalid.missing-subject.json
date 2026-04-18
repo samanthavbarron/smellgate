@@ -1,0 +1,5 @@
+{
+  "$type": "app.smellgate.comment",
+  "body": "A comment with no subject strongRef.",
+  "createdAt": "2024-02-15T13:00:00.000Z"
+}

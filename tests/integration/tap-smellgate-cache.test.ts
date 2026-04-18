@@ -1,6 +1,6 @@
 /**
  * Integration tests for the Tap → read-cache dispatcher for
- * `com.smellgate.*` records.
+ * `app.smellgate.*` records.
  *
  * These tests exercise the real dispatch code in
  * `lib/tap/smellgate.ts` against a real SQLite database (migrated via
@@ -38,14 +38,14 @@ const CURATOR_DID = "did:plc:alicecurator01";
 const USER_DID = "did:plc:bobuser01";
 
 const NSID = {
-  perfume: "com.smellgate.perfume",
-  perfumeSubmission: "com.smellgate.perfumeSubmission",
-  perfumeSubmissionResolution: "com.smellgate.perfumeSubmissionResolution",
-  shelfItem: "com.smellgate.shelfItem",
-  review: "com.smellgate.review",
-  description: "com.smellgate.description",
-  vote: "com.smellgate.vote",
-  comment: "com.smellgate.comment",
+  perfume: "app.smellgate.perfume",
+  perfumeSubmission: "app.smellgate.perfumeSubmission",
+  perfumeSubmissionResolution: "app.smellgate.perfumeSubmissionResolution",
+  shelfItem: "app.smellgate.shelfItem",
+  review: "app.smellgate.review",
+  description: "app.smellgate.description",
+  vote: "app.smellgate.vote",
+  comment: "app.smellgate.comment",
 } as const;
 
 // Real CIDs (sha256 raw) generated once from throwaway content. They
@@ -142,10 +142,10 @@ function strongRef(uri: string, cid: string = FAKE_CID2) {
 
 // Any plausible perfume AT-URI. The dispatcher does not resolve strong
 // refs to other rows; they are stored as opaque (uri, cid) pairs.
-const PERFUME_REF_URI = `at://${CURATOR_DID}/com.smellgate.perfume/3jzfcijpj2zref`;
-const DESCRIPTION_REF_URI = `at://${USER_DID}/com.smellgate.description/3jzfcijpj2zdref`;
-const REVIEW_REF_URI = `at://${USER_DID}/com.smellgate.review/3jzfcijpj2zrref`;
-const SUBMISSION_REF_URI = `at://${USER_DID}/com.smellgate.perfumeSubmission/3jzfcijpj2zsref`;
+const PERFUME_REF_URI = `at://${CURATOR_DID}/app.smellgate.perfume/3jzfcijpj2zref`;
+const DESCRIPTION_REF_URI = `at://${USER_DID}/app.smellgate.description/3jzfcijpj2zdref`;
+const REVIEW_REF_URI = `at://${USER_DID}/app.smellgate.review/3jzfcijpj2zrref`;
+const SUBMISSION_REF_URI = `at://${USER_DID}/app.smellgate.perfumeSubmission/3jzfcijpj2zsref`;
 
 // -------------------------------------------------------------------------
 
@@ -165,7 +165,7 @@ describe("dispatchSmellgateEvent", () => {
   // ---- happy-path: one row ends up in the right table ------------------
 
   describe("happy-path per record type", () => {
-    it("indexes com.smellgate.perfume (curator-authored)", async () => {
+    it("indexes app.smellgate.perfume (curator-authored)", async () => {
       const db = env.db.getDb();
       const evt = makeEvent(NSID.perfume, CURATOR_DID, {
         $type: NSID.perfume,
@@ -192,7 +192,7 @@ describe("dispatchSmellgateEvent", () => {
       expect(row.cid).toBe(FAKE_CID);
     });
 
-    it("indexes com.smellgate.perfumeSubmission (user-authored)", async () => {
+    it("indexes app.smellgate.perfumeSubmission (user-authored)", async () => {
       const db = env.db.getDb();
       const evt = makeEvent(NSID.perfumeSubmission, USER_DID, {
         $type: NSID.perfumeSubmission,
@@ -214,7 +214,7 @@ describe("dispatchSmellgateEvent", () => {
       expect(row.author_did).toBe(USER_DID);
     });
 
-    it("indexes com.smellgate.perfumeSubmissionResolution (curator-authored)", async () => {
+    it("indexes app.smellgate.perfumeSubmissionResolution (curator-authored)", async () => {
       const db = env.db.getDb();
       const evt = makeEvent(
         NSID.perfumeSubmissionResolution,
@@ -240,7 +240,7 @@ describe("dispatchSmellgateEvent", () => {
       expect(row.perfume_uri).toBe(PERFUME_REF_URI);
     });
 
-    it("indexes com.smellgate.shelfItem", async () => {
+    it("indexes app.smellgate.shelfItem", async () => {
       const db = env.db.getDb();
       const evt = makeEvent(NSID.shelfItem, USER_DID, {
         $type: NSID.shelfItem,
@@ -263,7 +263,7 @@ describe("dispatchSmellgateEvent", () => {
       expect(row.author_did).toBe(USER_DID);
     });
 
-    it("indexes com.smellgate.review", async () => {
+    it("indexes app.smellgate.review", async () => {
       const db = env.db.getDb();
       const evt = makeEvent(NSID.review, USER_DID, {
         $type: NSID.review,
@@ -287,7 +287,7 @@ describe("dispatchSmellgateEvent", () => {
       expect(row.body).toBe("Lovely.");
     });
 
-    it("indexes com.smellgate.description", async () => {
+    it("indexes app.smellgate.description", async () => {
       const db = env.db.getDb();
       const evt = makeEvent(NSID.description, USER_DID, {
         $type: NSID.description,
@@ -306,7 +306,7 @@ describe("dispatchSmellgateEvent", () => {
       expect(row.perfume_uri).toBe(PERFUME_REF_URI);
     });
 
-    it("indexes com.smellgate.vote", async () => {
+    it("indexes app.smellgate.vote", async () => {
       const db = env.db.getDb();
       const evt = makeEvent(NSID.vote, USER_DID, {
         $type: NSID.vote,
@@ -325,7 +325,7 @@ describe("dispatchSmellgateEvent", () => {
       expect(row.subject_uri).toBe(DESCRIPTION_REF_URI);
     });
 
-    it("indexes com.smellgate.comment", async () => {
+    it("indexes app.smellgate.comment", async () => {
       const db = env.db.getDb();
       const evt = makeEvent(NSID.comment, USER_DID, {
         $type: NSID.comment,
@@ -348,7 +348,7 @@ describe("dispatchSmellgateEvent", () => {
   // ---- curator drop tests ---------------------------------------------
 
   describe("curator enforcement", () => {
-    it("drops com.smellgate.perfume authored by a non-curator", async () => {
+    it("drops app.smellgate.perfume authored by a non-curator", async () => {
       const db = env.db.getDb();
       const evt = makeEvent(NSID.perfume, USER_DID, {
         $type: NSID.perfume,
@@ -367,7 +367,7 @@ describe("dispatchSmellgateEvent", () => {
       expect(Number(count.c)).toBe(0);
     });
 
-    it("drops com.smellgate.perfumeSubmissionResolution authored by a non-curator", async () => {
+    it("drops app.smellgate.perfumeSubmissionResolution authored by a non-curator", async () => {
       const db = env.db.getDb();
       const evt = makeEvent(NSID.perfumeSubmissionResolution, USER_DID, {
         $type: NSID.perfumeSubmissionResolution,
@@ -385,7 +385,7 @@ describe("dispatchSmellgateEvent", () => {
       expect(Number(count.c)).toBe(0);
     });
 
-    it("indexes com.smellgate.perfume when the author IS a curator", async () => {
+    it("indexes app.smellgate.perfume when the author IS a curator", async () => {
       const db = env.db.getDb();
       const evt = makeEvent(NSID.perfume, CURATOR_DID, {
         $type: NSID.perfume,
@@ -404,7 +404,7 @@ describe("dispatchSmellgateEvent", () => {
       expect(row.name).toBe("Real Canonical");
     });
 
-    it("indexes com.smellgate.perfumeSubmissionResolution when the author IS a curator", async () => {
+    it("indexes app.smellgate.perfumeSubmissionResolution when the author IS a curator", async () => {
       const db = env.db.getDb();
       const evt = makeEvent(NSID.perfumeSubmissionResolution, CURATOR_DID, {
         $type: NSID.perfumeSubmissionResolution,

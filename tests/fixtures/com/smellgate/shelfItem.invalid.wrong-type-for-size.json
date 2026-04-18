@@ -1,9 +1,0 @@
-{
-  "$type": "com.smellgate.shelfItem",
-  "perfume": {
-    "uri": "at://did:plc:fixturecuratorxxxxxxxxxx/com.smellgate.perfume/3kxyz222bbb",
-    "cid": "bafyreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku"
-  },
-  "bottleSizeMl": "fifty",
-  "createdAt": "2024-02-10T09:00:00.000Z"
-}

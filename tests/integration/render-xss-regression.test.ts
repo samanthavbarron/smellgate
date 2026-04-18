@@ -164,14 +164,14 @@ describe("render-path XSS regression (#141)", () => {
   it("escapes <script> and <img onerror> in a community description body when rendering the perfume page", async () => {
     // Seed a canonical perfume.
     const perfumeRkey = nextRkey();
-    const perfumeUri = `at://${FAKE_CURATOR_DID}/com.smellgate.perfume/${perfumeRkey}`;
+    const perfumeUri = `at://${FAKE_CURATOR_DID}/app.smellgate.perfume/${perfumeRkey}`;
     await env.tap.dispatchSmellgateEvent(
       env.db.getDb(),
       makeEvent(
-        "com.smellgate.perfume",
+        "app.smellgate.perfume",
         FAKE_CURATOR_DID,
         {
-          $type: "com.smellgate.perfume",
+          $type: "app.smellgate.perfume",
           name: "Render Target",
           house: "House",
           notes: ["test"],
@@ -189,10 +189,10 @@ describe("render-path XSS regression (#141)", () => {
     await env.tap.dispatchSmellgateEvent(
       env.db.getDb(),
       makeEvent(
-        "com.smellgate.description",
+        "app.smellgate.description",
         FAKE_AUTHOR_DID,
         {
-          $type: "com.smellgate.description",
+          $type: "app.smellgate.description",
           perfume: { uri: perfumeUri, cid: FAKE_CID },
           body: xssBody,
           createdAt: nowIso(),
@@ -242,14 +242,14 @@ describe("render-path XSS regression (#141)", () => {
 
   it("escapes <script> and <img onerror> in a review body when rendering the perfume page", async () => {
     const perfumeRkey = nextRkey();
-    const perfumeUri = `at://${FAKE_CURATOR_DID}/com.smellgate.perfume/${perfumeRkey}`;
+    const perfumeUri = `at://${FAKE_CURATOR_DID}/app.smellgate.perfume/${perfumeRkey}`;
     await env.tap.dispatchSmellgateEvent(
       env.db.getDb(),
       makeEvent(
-        "com.smellgate.perfume",
+        "app.smellgate.perfume",
         FAKE_CURATOR_DID,
         {
-          $type: "com.smellgate.perfume",
+          $type: "app.smellgate.perfume",
           name: "Review Render Target",
           house: "House",
           notes: ["test"],
@@ -264,10 +264,10 @@ describe("render-path XSS regression (#141)", () => {
     await env.tap.dispatchSmellgateEvent(
       env.db.getDb(),
       makeEvent(
-        "com.smellgate.review",
+        "app.smellgate.review",
         FAKE_AUTHOR_DID,
         {
-          $type: "com.smellgate.review",
+          $type: "app.smellgate.review",
           perfume: { uri: perfumeUri, cid: FAKE_CID },
           rating: 8,
           sillage: 4,

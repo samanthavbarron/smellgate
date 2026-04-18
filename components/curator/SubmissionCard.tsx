@@ -289,7 +289,7 @@ export function SubmissionCard({
             type="text"
             value={canonicalUri}
             onChange={(e) => setCanonicalUri(e.target.value)}
-            placeholder="at://did:plc:.../com.smellgate.perfume/..."
+            placeholder="at://did:plc:.../app.smellgate.perfume/..."
             className="block w-full rounded-md border border-zinc-300 bg-white px-2 py-1 font-mono text-xs text-zinc-900 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
           />
           <p className="text-xs text-zinc-500 dark:text-zinc-500">

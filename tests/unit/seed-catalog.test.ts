@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { isValidTid } from '@atproto/syntax'
-import { $safeParse } from '../../lib/lexicons/com/smellgate/perfume'
+import { $safeParse } from '../../lib/lexicons/app/smellgate/perfume'
 import { seedRkey } from '../../scripts/seed-catalog'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -80,7 +80,7 @@ describe('seed-catalog.json', () => {
     expect(ids.size).toBe(entries.length)
   })
 
-  it('every entry validates against com.smellgate.perfume after stripping _seed', () => {
+  it('every entry validates against app.smellgate.perfume after stripping _seed', () => {
     for (const entry of entries) {
       const { _seed: _discard, ...record } = entry
       void _discard

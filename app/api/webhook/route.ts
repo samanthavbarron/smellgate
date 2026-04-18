@@ -14,7 +14,7 @@ import {
 const TAP_ADMIN_PASSWORD = process.env.TAP_ADMIN_PASSWORD;
 
 const STATUSPHERE_COLLECTION = "xyz.statusphere.status";
-const SMELLGATE_NSID_PREFIX = "com.smellgate.";
+const SMELLGATE_NSID_PREFIX = "app.smellgate.";
 
 export async function POST(request: NextRequest) {
   // Verify request is from our TAP server
@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
   }
 
   // Handle record events. We dispatch by collection NSID:
-  //  - com.smellgate.* → Phase 2 read-cache dispatcher
+  //  - app.smellgate.* → Phase 2 read-cache dispatcher
   //  - xyz.statusphere.status → legacy starter handler (untouched)
   //  - anything else → no-op
   if (evt.type === "record") {

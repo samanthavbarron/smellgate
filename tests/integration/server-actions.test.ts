@@ -156,8 +156,8 @@ async function seedPerfume(
   env: CacheEnv,
   name: string = "Test Perfume",
 ): Promise<string> {
-  const evt = makeEvent("com.smellgate.perfume", FAKE_CURATOR_DID, {
-    $type: "com.smellgate.perfume",
+  const evt = makeEvent("app.smellgate.perfume", FAKE_CURATOR_DID, {
+    $type: "app.smellgate.perfume",
     name,
     house: "Test House",
     notes: ["test-note"],
@@ -177,8 +177,8 @@ async function seedDescription(
   authorDid: string,
   perfumeUri: string,
 ): Promise<string> {
-  const evt = makeEvent("com.smellgate.description", authorDid, {
-    $type: "com.smellgate.description",
+  const evt = makeEvent("app.smellgate.description", authorDid, {
+    $type: "app.smellgate.description",
     perfume: { uri: perfumeUri, cid: FAKE_CID },
     body: "A community description for testing.",
     createdAt: nowIso(),
@@ -192,8 +192,8 @@ async function seedReview(
   authorDid: string,
   perfumeUri: string,
 ): Promise<string> {
-  const evt = makeEvent("com.smellgate.review", authorDid, {
-    $type: "com.smellgate.review",
+  const evt = makeEvent("app.smellgate.review", authorDid, {
+    $type: "app.smellgate.review",
     perfume: { uri: perfumeUri, cid: FAKE_CID },
     rating: 8,
     sillage: 4,
@@ -482,7 +482,7 @@ describe("smellgate server actions (Phase 3.B)", () => {
         },
       );
       expect(result.uri).toMatch(
-        new RegExp(`^at://${alice.did}/com\\.smellgate\\.shelfItem/`),
+        new RegExp(`^at://${alice.did}/app\\.smellgate\\.shelfItem/`),
       );
       // Issue #119: response echoes the persisted record, including
       // the optional bottleSizeMl + isDecant flags.
@@ -496,7 +496,7 @@ describe("smellgate server actions (Phase 3.B)", () => {
         perfume: { uri: string; cid: string };
         bottleSizeMl?: number;
       };
-      expect(value.$type).toBe("com.smellgate.shelfItem");
+      expect(value.$type).toBe("app.smellgate.shelfItem");
       expect(value.perfume.uri).toBe(perfumeUri);
       expect(value.perfume.cid).toBe(FAKE_CID);
       expect(value.bottleSizeMl).toBe(100);
@@ -510,7 +510,7 @@ describe("smellgate server actions (Phase 3.B)", () => {
       const beforeCount = await listRecordCount(
         aliceSession,
         alice.did,
-        "com.smellgate.shelfItem",
+        "app.smellgate.shelfItem",
       );
       await expect(
         env.actions.addToShelfAction(env.db.getDb(), aliceSession, {
@@ -521,7 +521,7 @@ describe("smellgate server actions (Phase 3.B)", () => {
       const afterCount = await listRecordCount(
         aliceSession,
         alice.did,
-        "com.smellgate.shelfItem",
+        "app.smellgate.shelfItem",
       );
       expect(afterCount).toBe(beforeCount);
     }, 30_000);
@@ -531,7 +531,7 @@ describe("smellgate server actions (Phase 3.B)", () => {
       const beforeCount = await listRecordCount(
         aliceSession,
         alice.did,
-        "com.smellgate.shelfItem",
+        "app.smellgate.shelfItem",
       );
       await expect(
         env.actions.addToShelfAction(env.db.getDb(), aliceSession, {
@@ -542,7 +542,7 @@ describe("smellgate server actions (Phase 3.B)", () => {
       const afterCount = await listRecordCount(
         aliceSession,
         alice.did,
-        "com.smellgate.shelfItem",
+        "app.smellgate.shelfItem",
       );
       expect(afterCount).toBe(beforeCount);
     }, 30_000);
@@ -564,11 +564,11 @@ describe("smellgate server actions (Phase 3.B)", () => {
       const beforeCount = await listRecordCount(
         aliceSession,
         alice.did,
-        "com.smellgate.shelfItem",
+        "app.smellgate.shelfItem",
       );
       await expect(
         env.actions.addToShelfAction(env.db.getDb(), aliceSession, {
-          perfumeUri: "at://did:plc:not-real/com.smellgate.perfume/abc",
+          perfumeUri: "at://did:plc:not-real/app.smellgate.perfume/abc",
         }),
       ).rejects.toMatchObject({
         name: "ActionError",
@@ -577,7 +577,7 @@ describe("smellgate server actions (Phase 3.B)", () => {
       const afterCount = await listRecordCount(
         aliceSession,
         alice.did,
-        "com.smellgate.shelfItem",
+        "app.smellgate.shelfItem",
       );
       expect(afterCount).toBe(beforeCount);
     }, 30_000);
@@ -600,7 +600,7 @@ describe("smellgate server actions (Phase 3.B)", () => {
         },
       );
       expect(result.uri).toMatch(
-        new RegExp(`^at://${alice.did}/com\\.smellgate\\.review/`),
+        new RegExp(`^at://${alice.did}/app\\.smellgate\\.review/`),
       );
       // Issue #124: response echoes the persisted record.
       expect(result.record.perfumeUri).toBe(perfumeUri);
@@ -616,7 +616,7 @@ describe("smellgate server actions (Phase 3.B)", () => {
         rating: number;
         body: string;
       };
-      expect(value.$type).toBe("com.smellgate.review");
+      expect(value.$type).toBe("app.smellgate.review");
       expect(value.perfume.uri).toBe(perfumeUri);
       expect(value.rating).toBe(9);
       expect(value.body).toContain("Surprisingly");
@@ -627,7 +627,7 @@ describe("smellgate server actions (Phase 3.B)", () => {
       const beforeCount = await listRecordCount(
         aliceSession,
         alice.did,
-        "com.smellgate.review",
+        "app.smellgate.review",
       );
       await expect(
         env.actions.postReviewAction(env.db.getDb(), aliceSession, {
@@ -641,7 +641,7 @@ describe("smellgate server actions (Phase 3.B)", () => {
       const afterCount = await listRecordCount(
         aliceSession,
         alice.did,
-        "com.smellgate.review",
+        "app.smellgate.review",
       );
       expect(afterCount).toBe(beforeCount);
     }, 30_000);
@@ -661,7 +661,7 @@ describe("smellgate server actions (Phase 3.B)", () => {
         },
       );
       expect(result.uri).toMatch(
-        new RegExp(`^at://${alice.did}/com\\.smellgate\\.description/`),
+        new RegExp(`^at://${alice.did}/app\\.smellgate\\.description/`),
       );
       // Issue #124: response echoes the persisted record.
       expect(result.record.perfumeUri).toBe(perfumeUri);
@@ -669,7 +669,7 @@ describe("smellgate server actions (Phase 3.B)", () => {
       expect(typeof result.record.createdAt).toBe("string");
       const fetched = await getRecord(aliceSession, result.uri);
       const value = fetched.value as { $type: string; body: string };
-      expect(value.$type).toBe("com.smellgate.description");
+      expect(value.$type).toBe("app.smellgate.description");
       expect(value.body).toContain("aromatic");
     }, 60_000);
 
@@ -678,7 +678,7 @@ describe("smellgate server actions (Phase 3.B)", () => {
       const beforeCount = await listRecordCount(
         aliceSession,
         alice.did,
-        "com.smellgate.description",
+        "app.smellgate.description",
       );
       await expect(
         env.actions.postDescriptionAction(env.db.getDb(), aliceSession, {
@@ -689,7 +689,7 @@ describe("smellgate server actions (Phase 3.B)", () => {
       const afterCount = await listRecordCount(
         aliceSession,
         alice.did,
-        "com.smellgate.description",
+        "app.smellgate.description",
       );
       expect(afterCount).toBe(beforeCount);
     }, 30_000);
@@ -712,7 +712,7 @@ describe("smellgate server actions (Phase 3.B)", () => {
         { descriptionUri, direction: "up" },
       );
       expect(result.uri).toMatch(
-        new RegExp(`^at://${alice.did}/com\\.smellgate\\.vote/`),
+        new RegExp(`^at://${alice.did}/app\\.smellgate\\.vote/`),
       );
       // Issue #124: response echoes the persisted record.
       expect(result.record.descriptionUri).toBe(descriptionUri);
@@ -724,7 +724,7 @@ describe("smellgate server actions (Phase 3.B)", () => {
         direction: string;
         subject: { uri: string };
       };
-      expect(value.$type).toBe("com.smellgate.vote");
+      expect(value.$type).toBe("app.smellgate.vote");
       expect(value.direction).toBe("up");
       expect(value.subject.uri).toBe(descriptionUri);
     }, 60_000);
@@ -735,7 +735,7 @@ describe("smellgate server actions (Phase 3.B)", () => {
       const beforeCount = await listRecordCount(
         aliceSession,
         alice.did,
-        "com.smellgate.vote",
+        "app.smellgate.vote",
       );
       await expect(
         env.actions.voteOnDescriptionAction(env.db.getDb(), aliceSession, {
@@ -747,7 +747,7 @@ describe("smellgate server actions (Phase 3.B)", () => {
       const afterCount = await listRecordCount(
         aliceSession,
         alice.did,
-        "com.smellgate.vote",
+        "app.smellgate.vote",
       );
       expect(afterCount).toBe(beforeCount);
     }, 30_000);
@@ -756,7 +756,7 @@ describe("smellgate server actions (Phase 3.B)", () => {
       await expect(
         env.actions.voteOnDescriptionAction(env.db.getDb(), aliceSession, {
           descriptionUri:
-            "at://did:plc:not-real/com.smellgate.description/missing",
+            "at://did:plc:not-real/app.smellgate.description/missing",
           direction: "up",
         }),
       ).rejects.toMatchObject({ name: "ActionError", status: 404 });
@@ -775,7 +775,7 @@ describe("smellgate server actions (Phase 3.B)", () => {
         { reviewUri, body: "Agree completely." },
       );
       expect(result.uri).toMatch(
-        new RegExp(`^at://${alice.did}/com\\.smellgate\\.comment/`),
+        new RegExp(`^at://${alice.did}/app\\.smellgate\\.comment/`),
       );
       // Issue #124: response echoes the persisted record.
       expect(result.record.reviewUri).toBe(reviewUri);
@@ -787,7 +787,7 @@ describe("smellgate server actions (Phase 3.B)", () => {
         body: string;
         subject: { uri: string };
       };
-      expect(value.$type).toBe("com.smellgate.comment");
+      expect(value.$type).toBe("app.smellgate.comment");
       expect(value.body).toBe("Agree completely.");
       expect(value.subject.uri).toBe(reviewUri);
     }, 60_000);
@@ -796,18 +796,18 @@ describe("smellgate server actions (Phase 3.B)", () => {
       const beforeCount = await listRecordCount(
         aliceSession,
         alice.did,
-        "com.smellgate.comment",
+        "app.smellgate.comment",
       );
       await expect(
         env.actions.commentOnReviewAction(env.db.getDb(), aliceSession, {
-          reviewUri: "at://did:plc:not-real/com.smellgate.review/missing",
+          reviewUri: "at://did:plc:not-real/app.smellgate.review/missing",
           body: "Should fail.",
         }),
       ).rejects.toMatchObject({ name: "ActionError", status: 404 });
       const afterCount = await listRecordCount(
         aliceSession,
         alice.did,
-        "com.smellgate.comment",
+        "app.smellgate.comment",
       );
       expect(afterCount).toBe(beforeCount);
     }, 30_000);
@@ -887,7 +887,7 @@ describe("smellgate server actions (Phase 3.B)", () => {
       const beforeCount = await listRecordCount(
         aliceSession,
         alice.did,
-        "com.smellgate.description",
+        "app.smellgate.description",
       );
       await expect(
         env.actions.postDescriptionAction(env.db.getDb(), aliceSession, {
@@ -898,7 +898,7 @@ describe("smellgate server actions (Phase 3.B)", () => {
       const afterCount = await listRecordCount(
         aliceSession,
         alice.did,
-        "com.smellgate.description",
+        "app.smellgate.description",
       );
       expect(afterCount).toBe(beforeCount);
     }, 30_000);
@@ -980,7 +980,7 @@ describe("smellgate server actions (Phase 3.B)", () => {
       const beforeCount = await listRecordCount(
         aliceSession,
         alice.did,
-        "com.smellgate.vote",
+        "app.smellgate.vote",
       );
       await expect(
         env.actions.voteOnDescriptionAction(env.db.getDb(), aliceSession, {
@@ -994,7 +994,7 @@ describe("smellgate server actions (Phase 3.B)", () => {
       const afterCount = await listRecordCount(
         aliceSession,
         alice.did,
-        "com.smellgate.vote",
+        "app.smellgate.vote",
       );
       expect(afterCount).toBe(beforeCount);
     }, 60_000);
@@ -1028,7 +1028,7 @@ describe("smellgate server actions (Phase 3.B)", () => {
       const listUrl =
         `/xrpc/com.atproto.repo.listRecords` +
         `?repo=${encodeURIComponent(alice.did)}` +
-        `&collection=com.smellgate.vote` +
+        `&collection=app.smellgate.vote` +
         `&limit=100`;
       const listRes = await aliceSession.fetchHandler(listUrl, {
         method: "GET",
@@ -1107,7 +1107,7 @@ describe("smellgate server actions (Phase 3.B)", () => {
       const listRes = await aliceSession.fetchHandler(
         `/xrpc/com.atproto.repo.listRecords?repo=${encodeURIComponent(
           alice.did,
-        )}&collection=com.smellgate.perfumeSubmission&limit=100`,
+        )}&collection=app.smellgate.perfumeSubmission&limit=100`,
         { method: "GET" },
       );
       const listBody = (await listRes.json()) as {
@@ -1162,10 +1162,10 @@ describe("smellgate server actions (Phase 3.B)", () => {
 
       // Dispatch a synthetic rejection resolution for `first`.
       const rejectEvt = makeEvent(
-        "com.smellgate.perfumeSubmissionResolution",
+        "app.smellgate.perfumeSubmissionResolution",
         FAKE_CURATOR_DID,
         {
-          $type: "com.smellgate.perfumeSubmissionResolution",
+          $type: "app.smellgate.perfumeSubmissionResolution",
           submission: { uri: first.uri, cid: FAKE_CID },
           decision: "rejected",
           note: "Needs more detail.",
@@ -1235,10 +1235,10 @@ describe("smellgate server actions (Phase 3.B)", () => {
 
       // Dispatch an approval resolution for subA.
       const approveEvt = makeEvent(
-        "com.smellgate.perfumeSubmissionResolution",
+        "app.smellgate.perfumeSubmissionResolution",
         FAKE_CURATOR_DID,
         {
-          $type: "com.smellgate.perfumeSubmissionResolution",
+          $type: "app.smellgate.perfumeSubmissionResolution",
           submission: { uri: subA.uri, cid: FAKE_CID },
           decision: "approved",
           perfume: { uri: canonicalPerfumeUri, cid: FAKE_CID },
@@ -1249,10 +1249,10 @@ describe("smellgate server actions (Phase 3.B)", () => {
 
       // Dispatch a rejection resolution for subB with a curator note.
       const rejectEvt = makeEvent(
-        "com.smellgate.perfumeSubmissionResolution",
+        "app.smellgate.perfumeSubmissionResolution",
         FAKE_CURATOR_DID,
         {
-          $type: "com.smellgate.perfumeSubmissionResolution",
+          $type: "app.smellgate.perfumeSubmissionResolution",
           submission: { uri: subB.uri, cid: FAKE_CID },
           decision: "rejected",
           note: "Not enough detail.",

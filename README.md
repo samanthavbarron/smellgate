@@ -37,7 +37,7 @@ The integration tier boots a real ATProto PDS + PLC directory in-process via [`@
 
 - **Product vision:** [PLAN.md](PLAN.md)
 - **How we build:** [AGENTS.md](AGENTS.md) — working mode, adversarial review, repo layout, roadmap, resume-context
-- **Data model:** [docs/lexicons.md](docs/lexicons.md) — the 8 `com.smellgate.*` record types and the submission → canonical flow
+- **Data model:** [docs/lexicons.md](docs/lexicons.md) — the 8 `app.smellgate.*` record types and the submission → canonical flow
 - **Frontend conventions:** [docs/ui.md](docs/ui.md)
 - **Pre-ship backlog:** [issue #86](https://github.com/samanthavbarron/smellgate/issues/86)
 - **Contributing:** [CONTRIBUTING.md](CONTRIBUTING.md)

@@ -3,7 +3,7 @@
 /**
  * Perfume-submission composer (Phase 4.D, issue #69).
  *
- * Writes a `com.smellgate.perfumeSubmission` record via
+ * Writes a `app.smellgate.perfumeSubmission` record via
  * `/api/smellgate/submission`. On success, shows an inline
  * confirmation with the server's `status` / `message` (issue #111)
  * and a link to `/profile/me/submissions` (#131), **before** routing

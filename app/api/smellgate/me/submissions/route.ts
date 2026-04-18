@@ -1,6 +1,6 @@
 /**
  * GET /api/smellgate/me/submissions — the authenticated user's own
- * `com.smellgate.perfumeSubmission` records, annotated with
+ * `app.smellgate.perfumeSubmission` records, annotated with
  * resolution state.
  *
  * Response shape mirrors the HTML at `/profile/me/submissions`: a

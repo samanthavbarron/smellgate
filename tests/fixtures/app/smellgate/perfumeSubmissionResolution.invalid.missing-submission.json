@@ -1,0 +1,6 @@
+{
+  "$type": "app.smellgate.perfumeSubmissionResolution",
+  "decision": "rejected",
+  "note": "Missing the submission strongRef entirely.",
+  "createdAt": "2024-02-05T10:00:00.000Z"
+}

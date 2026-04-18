@@ -1,5 +1,5 @@
 /**
- * Tap → read-cache dispatch for `com.smellgate.*` records.
+ * Tap → read-cache dispatch for `app.smellgate.*` records.
  *
  * This module is the "index-time" side of Phase 2. It takes a Tap
  * record event (`create` | `update` | `delete` for one of our 8
@@ -38,7 +38,7 @@
 import { AtUri } from "@atproto/syntax";
 import type { RecordEvent } from "@atproto/tap";
 import { Kysely } from "kysely";
-import * as smellgate from "../lexicons/com/smellgate";
+import * as smellgate from "../lexicons/app/smellgate";
 import { isCurator } from "../curators";
 import type { DatabaseSchema } from "../db";
 
@@ -47,14 +47,14 @@ import type { DatabaseSchema } from "../db";
 // lexicon modules; kept explicit so the dispatch `switch` is readable.
 // ---------------------------------------------------------------------------
 export const SMELLGATE_COLLECTIONS = {
-  perfume: "com.smellgate.perfume",
-  perfumeSubmission: "com.smellgate.perfumeSubmission",
-  perfumeSubmissionResolution: "com.smellgate.perfumeSubmissionResolution",
-  shelfItem: "com.smellgate.shelfItem",
-  review: "com.smellgate.review",
-  description: "com.smellgate.description",
-  vote: "com.smellgate.vote",
-  comment: "com.smellgate.comment",
+  perfume: "app.smellgate.perfume",
+  perfumeSubmission: "app.smellgate.perfumeSubmission",
+  perfumeSubmissionResolution: "app.smellgate.perfumeSubmissionResolution",
+  shelfItem: "app.smellgate.shelfItem",
+  review: "app.smellgate.review",
+  description: "app.smellgate.description",
+  vote: "app.smellgate.vote",
+  comment: "app.smellgate.comment",
 } as const;
 
 export const SMELLGATE_COLLECTION_LIST: readonly string[] = Object.freeze(
@@ -107,7 +107,7 @@ function logDrop(
 // ---------------------------------------------------------------------------
 
 /**
- * Dispatch a Tap record event to the right `com.smellgate.*` handler.
+ * Dispatch a Tap record event to the right `app.smellgate.*` handler.
  *
  * - Returns without touching the DB if the event's collection isn't one
  *   of ours. The webhook route forwards every record event to this

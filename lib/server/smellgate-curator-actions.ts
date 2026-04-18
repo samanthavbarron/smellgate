@@ -11,8 +11,8 @@
  *
  *   1. Curator gate helpers.
  *   2. List pending submissions.
- *   3. Approve a submission (writes a canonical `com.smellgate.perfume`
- *      + a `com.smellgate.perfumeSubmissionResolution` to the curator's
+ *   3. Approve a submission (writes a canonical `app.smellgate.perfume`
+ *      + a `app.smellgate.perfumeSubmissionResolution` to the curator's
  *      PDS).
  *   4. Reject a submission (writes a resolution with
  *      `decision: "rejected"`).
@@ -45,7 +45,7 @@ import { Client, type l } from "@atproto/lex";
 import type { OAuthSession } from "@atproto/oauth-client-node";
 import { AtUri } from "@atproto/syntax";
 import type { Kysely } from "kysely";
-import * as com from "../lexicons/com";
+import * as app from "../lexicons/app";
 import { isCurator } from "../curators";
 import {
   getPendingRecordsForUser,
@@ -322,7 +322,7 @@ export async function approveSubmissionAction(
       ? sanitizeFreeText(submission.description, "description")
       : undefined;
 
-  const perfumeRes = await lexClient.create(com.smellgate.perfume.main, {
+  const perfumeRes = await lexClient.create(app.smellgate.perfume.main, {
     name: submission.name,
     house: submission.house,
     creator: submission.creator ?? undefined,
@@ -335,7 +335,7 @@ export async function approveSubmissionAction(
   // Step 2: write the resolution linking the submission to the new
   // canonical perfume. Both strongRefs live in the curator's repo.
   const resolutionRes = await lexClient.create(
-    com.smellgate.perfumeSubmissionResolution.main,
+    app.smellgate.perfumeSubmissionResolution.main,
     {
       submission: strongRef(submission.uri, submission.cid),
       decision: "approved",
@@ -380,7 +380,7 @@ export async function rejectSubmissionAction(
 
   const lexClient = new Client(session);
   const resolutionRes = await lexClient.create(
-    com.smellgate.perfumeSubmissionResolution.main,
+    app.smellgate.perfumeSubmissionResolution.main,
     {
       submission: strongRef(submission.uri, submission.cid),
       decision: "rejected",
@@ -419,7 +419,7 @@ export async function markDuplicateAction(
 
   const lexClient = new Client(session);
   const resolutionRes = await lexClient.create(
-    com.smellgate.perfumeSubmissionResolution.main,
+    app.smellgate.perfumeSubmissionResolution.main,
     {
       submission: strongRef(submission.uri, submission.cid),
       decision: "duplicate",
@@ -461,9 +461,9 @@ export async function markDuplicateAction(
 async function rewriteOne(
   client: Client,
   collection:
-    | "com.smellgate.shelfItem"
-    | "com.smellgate.review"
-    | "com.smellgate.description",
+    | "app.smellgate.shelfItem"
+    | "app.smellgate.review"
+    | "app.smellgate.description",
   candidate: PendingRewrite,
 ): Promise<void> {
   const { collection: recCollection, rkey } = parseRkey(candidate.recordUri);
@@ -488,7 +488,7 @@ async function rewriteOne(
   };
 
   switch (collection) {
-    case "com.smellgate.shelfItem": {
+    case "app.smellgate.shelfItem": {
       const v = value as {
         perfume: { uri: string; cid: string };
         acquiredAt?: string;
@@ -497,7 +497,7 @@ async function rewriteOne(
         createdAt: string;
       };
       await client.put(
-        com.smellgate.shelfItem.main,
+        app.smellgate.shelfItem.main,
         {
           perfume: strongRef(newPerfume.uri, newPerfume.cid),
           acquiredAt:
@@ -510,7 +510,7 @@ async function rewriteOne(
       );
       return;
     }
-    case "com.smellgate.review": {
+    case "app.smellgate.review": {
       const v = value as {
         perfume: { uri: string; cid: string };
         rating: number;
@@ -520,7 +520,7 @@ async function rewriteOne(
         createdAt: string;
       };
       await client.put(
-        com.smellgate.review.main,
+        app.smellgate.review.main,
         {
           perfume: strongRef(newPerfume.uri, newPerfume.cid),
           rating: v.rating,
@@ -533,14 +533,14 @@ async function rewriteOne(
       );
       return;
     }
-    case "com.smellgate.description": {
+    case "app.smellgate.description": {
       const v = value as {
         perfume: { uri: string; cid: string };
         body: string;
         createdAt: string;
       };
       await client.put(
-        com.smellgate.description.main,
+        app.smellgate.description.main,
         {
           perfume: strongRef(newPerfume.uri, newPerfume.cid),
           body: v.body,
@@ -588,13 +588,13 @@ export async function rewritePendingRecords(
 
   const groups: Array<
     [
-      "com.smellgate.shelfItem" | "com.smellgate.review" | "com.smellgate.description",
+      "app.smellgate.shelfItem" | "app.smellgate.review" | "app.smellgate.description",
       PendingRewrite[],
     ]
   > = [
-    ["com.smellgate.shelfItem", pending.shelfItems],
-    ["com.smellgate.review", pending.reviews],
-    ["com.smellgate.description", pending.descriptions],
+    ["app.smellgate.shelfItem", pending.shelfItems],
+    ["app.smellgate.review", pending.reviews],
+    ["app.smellgate.description", pending.descriptions],
   ];
 
   for (const [collection, candidates] of groups) {
