@@ -68,7 +68,13 @@ export default async function ProfilePage({ params }: { params: Params }) {
   // elsewhere; no extra round-trip.
   const isSelf = session?.did === did;
 
+  // An authenticated user viewing their own profile is always a valid
+  // state — a freshly-logged-in user with no records, or any user when
+  // the identity cache is empty (e.g. no Tap consumer attached yet),
+  // should still see their own profile render. The 404 only makes
+  // sense for foreign DIDs we have no signal for.
   if (
+    !isSelf &&
     !handle &&
     shelf.length === 0 &&
     reviews.length === 0 &&

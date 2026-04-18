@@ -73,11 +73,7 @@ export default async function Home() {
         </div>
         {perfumes.length === 0 ? (
           <EmptyState>
-            The cache is empty. Seed it with{" "}
-            <code className="rounded bg-zinc-100 px-1 py-0.5 text-xs dark:bg-zinc-800">
-              pnpm dev:seed-cache
-            </code>
-            , or wait for the firehose dispatcher to index your first records.
+            No perfumes have been indexed yet. Check back soon.
           </EmptyState>
         ) : (
           <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
