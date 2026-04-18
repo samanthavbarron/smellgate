@@ -31,10 +31,16 @@ ARG PNPM_VERSION=8.15.9
 FROM node:${NODE_VERSION} AS deps
 WORKDIR /app
 
+# ARGs declared before the first FROM are NOT auto-inherited into a stage;
+# they must be re-declared inside the stage BEFORE any instruction that
+# expands them. Without this re-declaration, the corepack RUN below sees an
+# empty `pnpm@` spec and silently falls through to package.json's
+# `packageManager` field — which masks any drift between the two.
+ARG PNPM_VERSION
+
 # Enable pnpm via corepack, pinned to the version declared in package.json's
 # `packageManager` field so local dev and CI match this image.
 RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
-ARG PNPM_VERSION
 
 COPY package.json pnpm-lock.yaml ./
 RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
@@ -46,8 +52,11 @@ RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
 FROM node:${NODE_VERSION} AS build
 WORKDIR /app
 
-RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
+# See the identical note in the `deps` stage above — ARG must be re-declared
+# inside the stage BEFORE the corepack RUN that expands it.
 ARG PNPM_VERSION
+
+RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
 
 # Bring over installed deps from the `deps` stage, then overlay the source.
 COPY --from=deps /app/node_modules ./node_modules
