@@ -70,7 +70,7 @@ export default async function PerfumesPage({
 
       {total === 0 ? (
         <div className="rounded-lg border border-dashed border-zinc-300 bg-white p-6 text-sm text-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400">
-          No perfumes have been indexed yet. Check back soon.
+          No perfumes yet.
         </div>
       ) : (
         <>

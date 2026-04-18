@@ -34,8 +34,8 @@ export default function PerfumeNotFound() {
 
       <div className="mx-auto max-w-2xl rounded-lg border border-dashed border-zinc-300 bg-white p-6 text-sm text-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400">
         <p className="text-center">
-          The firehose may not have indexed this one yet, or the URI may be
-          wrong. You can head back home and browse what&rsquo;s in the catalog.
+          We don&rsquo;t have this perfume. The link may be wrong or outdated.
+          Head back home to browse the catalog.
         </p>
         <div className="mt-6 text-center">
           <Link

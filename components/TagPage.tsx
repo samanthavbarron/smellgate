@@ -47,8 +47,8 @@ export function TagPage({
 
       {perfumes.length === 0 ? (
         <div className="rounded-lg border border-dashed border-zinc-300 bg-white p-6 text-sm text-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400">
-          Nothing in the cache matches this tag. The firehose may not
-          have indexed anything here yet, or the spelling differs.
+          No perfumes match this tag. Check the spelling, or try a different
+          tag.
         </div>
       ) : (
         <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">

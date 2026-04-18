@@ -213,7 +213,7 @@ describe("/perfumes browse-all page (#122)", () => {
   it("renders the empty-state card when the cache has no perfumes", async () => {
     const html = await renderPerfumesPage(undefined);
     expect(countTiles(html)).toBe(0);
-    expect(html).toContain("No perfumes have been indexed yet");
+    expect(html).toContain("No perfumes yet");
     // No pagination nav when there's nothing to page through. Strip
     // React comment markers so `Page 1 of` matches against any
     // interpolation-fragmented copy.

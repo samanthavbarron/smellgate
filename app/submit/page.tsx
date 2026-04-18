@@ -19,8 +19,8 @@ export default async function SubmitPerfumePage() {
           Submit a perfume
         </h1>
         <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-          Curators review submissions and publish canonical records.
-          Your submission lives in your repo either way.
+          Curators review submissions and publish the final entry. Either way,
+          the submission stays in your account so you can look it up later.
         </p>
       </div>
 
