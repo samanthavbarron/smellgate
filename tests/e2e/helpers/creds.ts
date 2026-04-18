@@ -42,13 +42,17 @@ function parseEnvFile(p: string): CredMap {
 let _cache: CredMap | null = null;
 function loadFileCreds(): CredMap {
   if (_cache) return _cache;
-  const repoSecrets = path.resolve(
-    __dirname,
-    "..",
-    ".secrets",
-  );
+  const repoSecrets = path.resolve(__dirname, "..", ".secrets");
+  // `/tmp/.test-creds` is a local-dev convenience (the codespace
+  // convention, see scripts/agent-as.ts). On CI we MUST NOT read it:
+  // GitHub Actions runners can have leftover files under /tmp from
+  // previous job state, and picking up stale handle/password values
+  // there would silently override the `production` environment
+  // secrets we explicitly wired through env. GitHub Actions sets
+  // `CI=true` on every runner.
   const tmpCreds = "/tmp/.test-creds";
-  _cache = { ...parseEnvFile(tmpCreds), ...parseEnvFile(repoSecrets) };
+  const fromTmp = process.env.CI ? {} : parseEnvFile(tmpCreds);
+  _cache = { ...fromTmp, ...parseEnvFile(repoSecrets) };
   return _cache;
 }
 

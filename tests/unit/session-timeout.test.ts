@@ -50,10 +50,17 @@ describe("getSession hard-timeout / reset guard", () => {
 
   it("returns null and resets the client when restore never resolves", async () => {
     // A restore that never settles models the stuck-promise failure.
-    let resolveRestore: ((v: unknown) => void) | null = null;
+    // Wrap the resolver in a { fn } box so TypeScript can't narrow the
+    // reference to `never` after the `await` below — without the box
+    // `resolveRestore?.(null)` fails TS2349 (the inferred type after
+    // the await is `never` because control-flow analysis decides the
+    // assignment inside the Promise ctor is unreachable from here).
+    const resolver: { fn: ((v: unknown) => void) | undefined } = {
+      fn: undefined,
+    };
     restoreMock.mockReturnValueOnce(
       new Promise((resolve) => {
-        resolveRestore = resolve;
+        resolver.fn = resolve;
       }),
     );
 
@@ -65,7 +72,7 @@ describe("getSession hard-timeout / reset guard", () => {
     expect(result).toBeNull();
     expect(resetMock).toHaveBeenCalledTimes(1);
     // Prevent the dangling promise from keeping the test alive.
-    resolveRestore?.(null);
+    resolver.fn?.(null);
   });
 
   it("does not reset the client on a normal restore rejection", async () => {

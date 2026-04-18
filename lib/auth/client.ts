@@ -76,19 +76,27 @@ async function getKeyset(): Promise<Keyset | undefined> {
  * Discard the cached `NodeOAuthClient` singleton so the next call to
  * `getOAuthClient()` rebuilds it from scratch.
  *
- * Background: `@atproto/oauth-client`'s internal `CachedGetter.pending`
- * map and `requestLocalLock`'s locks map are both held inside this
- * singleton. If a `client.restore(did)` call wedges (see
- * `lib/auth/session.ts` RESTORE_TIMEOUT_MS for the repro), the stale
- * entries persist until the process restarts, so every subsequent
- * request for that DID queues behind the dead promise forever. Tossing
- * the singleton lets a fresh client pick up without a full process
- * bounce. Safe to call concurrently: the worst case is two clients
- * briefly coexist and one is GC'd — no external state is affected (the
- * session/state stores in `lib/db` are the source of truth).
+ * ⚠️ This does NOT self-heal a wedged `client.restore()`. The
+ * `@atproto/oauth-client` library serialises `restore()` per-DID
+ * through `requestLocalLock`, which stores its `Map<name, Promise>`
+ * at **module scope**
+ * (`node_modules/.../@atproto/oauth-client/dist/lock.js`). That map
+ * is shared across every `NodeOAuthClient` instance in the process,
+ * so nulling our singleton does not clear a stuck entry. Subsequent
+ * requests for the same DID will re-enter the same wedged lock and
+ * time out again at the `getSession()` budget — that 4s-per-request
+ * timeout is the only recovery short of a process restart.
  *
- * Only call this in response to an actual stall; routinely tossing the
- * client would defeat its token/metadata caches.
+ * What the reset DOES give us is a fresh `CachedGetter.pending` map
+ * (the other source of per-DID dead-promise parking, which IS
+ * instance-local) and clean dpop-nonce / resolver caches. It makes
+ * *subsequent* healthy operations recover faster than re-using a
+ * poisoned client.
+ *
+ * A real self-heal requires injecting a custom `requestLock` into
+ * `NodeOAuthClient` so we own the lock map and can evict entries.
+ * Tracked as issue #220. Root-cause investigation of the wedge
+ * itself is issue #219.
  */
 export function resetOAuthClient(): void {
   client = null;

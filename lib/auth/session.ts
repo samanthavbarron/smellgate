@@ -20,21 +20,29 @@ import type { OAuthSession } from "@atproto/oauth-client-node";
  * its internal 30s abort signal does not fire, so neither does the
  * `usingLock` release. Once one request for a given DID wedges, every
  * subsequent request for that DID is serialised behind the same
- * `requestLocalLock` entry and also hangs — effectively permanently,
- * because the module-level client singleton keeps the lock Map alive
- * across requests.
+ * `requestLocalLock` entry and also hangs — and because that lock Map
+ * is at module scope inside
+ * `@atproto/oauth-client/dist/lock.js` (NOT per-instance), the wedge
+ * survives nulling our `NodeOAuthClient` singleton and persists until
+ * the Node process restarts.
  *
- * The fundamental fix belongs upstream (or in `getOAuthClient`'s
- * fetch override — the same story PR #210 opened for write paths).
- * In the meantime this timeout has two jobs:
- *   1. Keep the page responsive. If `restore()` doesn't resolve in
- *      time, treat the visitor as signed-out for this render and let
- *      the rest of the page draw. Re-auth surfaces the LoginForm;
- *      browse keeps working for everyone.
- *   2. Unstick the process. When a timeout fires we throw away the
- *      module-level `NodeOAuthClient` singleton via
- *      `resetOAuthClient()` so the leaked `CachedGetter.pending` /
- *      `requestLocalLock` state does not poison subsequent requests.
+ * Root cause of why `restore()` wedges is still unconfirmed. PR #210
+ * fixed a Next.js 16 / undici 7 fetch body-source bug on write paths
+ * and `getUnpatchedFetch()` is wired into this codepath too, so
+ * whatever is stalling here is NOT that specific bug. Tracked as
+ * issue #219 ("Pin down root cause of OAuth `restore()` wedge in
+ * Fly prod") — the Playwright trace + curl evidence lives there.
+ *
+ * What this timeout buys us
+ * -------------------------
+ * Keep the page responsive. If `restore()` doesn't resolve in the
+ * budget, treat the visitor as signed-out for this render and let
+ * the rest of the page draw. Re-auth surfaces the LoginForm; browse
+ * keeps working for everyone. Every subsequent request for the same
+ * stuck DID will also time out at 4s until either the process
+ * restarts or issue #220 ships a real lock-level fix — see
+ * `resetOAuthClient` in `./client.ts` for why the singleton reset
+ * alone is not enough.
  *
  * 4s is the budget. Real restores on prod complete in well under
  * 200ms; any value this large is already a stall. Page-render budget
@@ -52,9 +60,12 @@ export async function getSession(): Promise<OAuthSession | null> {
     return await withTimeout(client.restore(did), RESTORE_TIMEOUT_MS);
   } catch (err) {
     if (err instanceof SessionRestoreTimeoutError) {
-      // Poison the singleton so the leaked lock/pending entry does not
-      // wedge every subsequent request. Best-effort — logging lets us
-      // see in Fly logs when the bad path was hit.
+      // Surface the stall in Fly logs so we can count occurrences
+      // per-DID in prod, and refresh instance-local state on the
+      // client. This does NOT clear the library's module-scope
+      // per-DID lock — see `resetOAuthClient` docstring — so the
+      // same DID will keep timing out until a process restart or a
+      // real lock-level fix.
       console.warn(
         "[auth] client.restore timed out; resetting OAuth client singleton",
         { did },
