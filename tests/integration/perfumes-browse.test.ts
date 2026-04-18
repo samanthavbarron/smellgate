@@ -245,14 +245,16 @@ describe("/perfumes browse-all page (#122)", () => {
     expect(overlap).toEqual([]);
   }, 60_000);
 
-  it("clamps ?page=9999 to the last real page", async () => {
+  it("redirects ?page=9999 to the last real page (#171)", async () => {
     for (let i = 0; i < 30; i += 1) {
       await seedPerfume(env, `Perfume ${String(i + 1).padStart(2, "0")}`);
     }
-    const html = await renderPerfumesPage("9999");
-    // 30 / 24 = 2 pages. The route should render page 2, not an
-    // empty grid with a broken "Page 9999 of 2" indicator.
-    expect(countTiles(html)).toBe(6);
-    expect(stripReactMarkers(html)).toContain("Page 2 of 2");
+    // 30 / 24 = 2 pages. PR #233 changed the route to redirect to the
+    // canonical URL instead of silently rendering a clamped page — the
+    // URL bar should match what's shown. `redirect()` throws the
+    // `NEXT_REDIRECT` sentinel error; we assert on its digest shape.
+    await expect(renderPerfumesPage("9999")).rejects.toMatchObject({
+      digest: expect.stringMatching(/^NEXT_REDIRECT;.*\/perfumes\?page=2/),
+    });
   }, 60_000);
 });

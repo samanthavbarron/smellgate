@@ -21,6 +21,7 @@
  * so each page fills a complete final row on desktop).
  */
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { getDb } from "@/lib/db";
 import {
   countPerfumes,
@@ -48,6 +49,21 @@ export default async function PerfumesPage({
     total,
     PAGE_SIZE,
   );
+
+  // Issue #171: if the raw query param doesn't match the canonical form
+  // for the clamped page, redirect so the URL bar matches what the
+  // viewer is actually seeing. `?page=99999` → `/perfumes?page=<last>`,
+  // `?page=abc` / `?page=-1` / `?page=0` / `?page=1` → `/perfumes`.
+  const canonicalPageParam = page === 1 ? null : String(page);
+  const rawPageParam =
+    typeof sp.page === "string"
+      ? sp.page
+      : Array.isArray(sp.page)
+        ? (sp.page[0] ?? null)
+        : null;
+  if (rawPageParam !== canonicalPageParam) {
+    redirect(canonicalPageParam ? `/perfumes?page=${canonicalPageParam}` : "/perfumes");
+  }
 
   const perfumes =
     total === 0 ? [] : await getRecentPerfumes(db, { limit, offset });

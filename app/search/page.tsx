@@ -25,13 +25,27 @@ function firstParam(v: string | string[] | undefined): string {
   return v ?? "";
 }
 
+/**
+ * Cap on `?q=` length (issue #179). The server-side substring search
+ * against SQLite doesn't care about length; the render path does — a
+ * 2000-char query blows past the layout container. 200 chars matches
+ * the lexicon's `maxGraphemes` bound on perfume name/house/creator,
+ * which is the longest legitimate thing a user could want to search
+ * for.
+ */
+const MAX_QUERY_LENGTH = 200;
+
+function clampQuery(raw: string): string {
+  return raw.length <= MAX_QUERY_LENGTH ? raw : raw.slice(0, MAX_QUERY_LENGTH);
+}
+
 export default async function SearchPage({
   searchParams,
 }: {
   searchParams: SearchParams;
 }) {
   const sp = await searchParams;
-  const query = firstParam(sp.q).trim();
+  const query = clampQuery(firstParam(sp.q).trim());
 
   if (query.length === 0) {
     return (
