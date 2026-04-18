@@ -268,7 +268,10 @@ function ReviewCard({
 }) {
   const encodedReviewUri = encodeURIComponent(review.uri);
   return (
-    <article className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
+    <article
+      data-smellgate-review={review.uri}
+      className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900"
+    >
       <header className="flex items-baseline justify-between gap-4">
         <div className="min-w-0">
           <div className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">
@@ -326,7 +329,10 @@ function DescriptionCard({
   signedIn: boolean;
 }) {
   return (
-    <article className="flex gap-4 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
+    <article
+      data-smellgate-description={description.uri}
+      className="flex gap-4 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900"
+    >
       {/* Score gutter — wired to `<VoteButtons>` in Phase 4.D (#69). */}
       {signedIn ? (
         <VoteButtons

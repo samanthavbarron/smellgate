@@ -155,7 +155,10 @@ export function SubmissionCard({
     : submission.authorDid;
 
   return (
-    <article className="rounded-lg border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900">
+    <article
+      data-smellgate-submission={submission.uri}
+      className="rounded-lg border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900"
+    >
       {confirmation && (
         <ConfirmationBanner
           confirmation={confirmation}
