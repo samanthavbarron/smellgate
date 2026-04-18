@@ -844,6 +844,17 @@ function atUriAuthority(uri: string): string | null {
  * a cleaner `logDrop` reason than the generic `lex_validate` when
  * debugging (issue #189).
  */
+/**
+ * C0 control chars (except `\t`, `\n`, `\r`) plus DEL. Issues #188 /
+ * #197: hostile or misbehaving third-party clients can write records
+ * containing NUL, BEL, or ANSI escape sequences directly to the PDS
+ * since the lexicon doesn't constrain them. Strip-rewrite is off the
+ * table at this layer (would break cid round-trip against the PDS),
+ * so we drop the record instead. The server-action write path strips
+ * the same chars at submission time via `sanitizeFreeText`.
+ */
+const FORBIDDEN_CONTROL_CHARS_RE = /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/;
+
 function validateBody(
   raw: unknown,
   max: number,
@@ -851,6 +862,7 @@ function validateBody(
   if (typeof raw !== "string") return { ok: false };
   if (raw.trim().length === 0) return { ok: false };
   if (countGraphemes(raw) > max) return { ok: false };
+  if (FORBIDDEN_CONTROL_CHARS_RE.test(raw)) return { ok: false };
   return { ok: true };
 }
 

@@ -201,6 +201,27 @@ describe("sanitizeFreeText", () => {
       "A real review body.",
     );
   });
+
+  it("strips NUL, BEL, and ANSI escape sequences (#188, #197)", () => {
+    expect(
+      sanitizeFreeText(
+        "before\u0000nul\u0007bel\u001b[31mred\u001b[0mafter",
+        "body",
+      ),
+    ).toBe("before" + "nul" + "bel" + "[31mred" + "[0mafter");
+  });
+
+  it("preserves \\t and \\n inside the body", () => {
+    expect(sanitizeFreeText("line1\nline2\tcol", "body")).toBe(
+      "line1\nline2\tcol",
+    );
+  });
+
+  it("rejects a body that is control-chars only (after strip)", () => {
+    expect(() =>
+      sanitizeFreeText("\u0000\u0007\u001b\u007f", "body"),
+    ).toThrow(ActionError);
+  });
 });
 
 // ---------------------------------------------------------------------------

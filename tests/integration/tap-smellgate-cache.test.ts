@@ -493,6 +493,61 @@ describe("dispatchSmellgateEvent", () => {
         .executeTakeFirstOrThrow();
       expect(Number(count.c)).toBe(0);
     });
+
+    // Issues #188 / #197. Lexicon has no `pattern` on body, so the PDS
+    // accepts NUL, BEL, ANSI escapes verbatim. The dispatcher drops
+    // them rather than strip-rewriting (which would break the cid
+    // round-trip against the PDS copy).
+    it.each([
+      ["review", NSID.review, "rev"],
+      ["description", NSID.description, "desc"],
+      ["comment", NSID.comment, "com"],
+    ])(
+      "drops app.smellgate.%s whose body contains C0 control chars",
+      async (_label, nsid, kind) => {
+        const db = env.db.getDb();
+        let fullRecord: Record<string, unknown>;
+        if (kind === "rev") {
+          fullRecord = {
+            $type: nsid,
+            perfume: strongRef(PERFUME_REF_URI),
+            rating: 8,
+            sillage: 3,
+            longevity: 3,
+            body: "hostile\u0000NUL\u001b[31mred\u001b[0m",
+            createdAt: nowIso(),
+          };
+        } else if (kind === "desc") {
+          fullRecord = {
+            $type: nsid,
+            perfume: strongRef(PERFUME_REF_URI),
+            body: "hostile\u0000NUL\u0007BEL",
+            createdAt: nowIso(),
+          };
+        } else {
+          fullRecord = {
+            $type: nsid,
+            subject: strongRef(REVIEW_REF_URI),
+            body: "hostile\u001b[2Jclear",
+            createdAt: nowIso(),
+          };
+        }
+
+        await env.tap.dispatchSmellgateEvent(db, makeEvent(nsid, USER_DID, fullRecord));
+
+        const tableName =
+          kind === "rev"
+            ? "smellgate_review"
+            : kind === "desc"
+              ? "smellgate_description"
+              : "smellgate_comment";
+        const count = await db
+          .selectFrom(tableName as "smellgate_review")
+          .select(db.fn.countAll<number>().as("c"))
+          .executeTakeFirstOrThrow();
+        expect(Number(count.c)).toBe(0);
+      },
+    );
   });
 
   // ---- note tag denormalization ---------------------------------------
