@@ -28,6 +28,17 @@
 # ships something worth adopting:
 #   https://github.com/bluesky-social/indigo/pkgs/container/indigo%2Ftap
 #
+# Verified tag + multi-arch digests (via `docker manifest inspect`,
+# 2026-04-18):
+#   ghcr.io/bluesky-social/indigo/tap:0.1.10
+#     amd64: sha256:b561eed862fa71939172c5420c5048cca6e136c296063ce54855f38ad4ad3ae0
+#     arm64: sha256:3c8ff1d5f566ea20257ebf920f295d920f6112eb738a14ea40465090748de2af
+# The amd64 digest is also pinned on the FROM line below. Fly's remote
+# builders produce linux/amd64 images by default, so digest-pinning to
+# the amd64 manifest is what we want for production. Bumping the tag
+# requires updating both the tag and the digest (Docker refuses a
+# mismatch, so supply-chain drift is loud rather than silent).
+#
 # The upstream image:
 #   - runs as root (no USER in its Dockerfile; see config blob for 0.1.10)
 #   - has WORKDIR /data, which is where Tap writes tap.db when
@@ -40,4 +51,4 @@
 # (secret). Keeping the Dockerfile a single FROM line means a Tap
 # image bump is a one-line change here.
 
-FROM ghcr.io/bluesky-social/indigo/tap:0.1.10
+FROM ghcr.io/bluesky-social/indigo/tap:0.1.10@sha256:b561eed862fa71939172c5420c5048cca6e136c296063ce54855f38ad4ad3ae0

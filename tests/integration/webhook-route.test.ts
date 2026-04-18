@@ -447,3 +447,91 @@ describe("/api/webhook shared-secret auth", () => {
     expect(Number(count.c)).toBe(0);
   });
 });
+
+// ===========================================================================
+// Production secret-misconfiguration regression (#148 adversarial review).
+//
+// Earlier shape of the route did `if (TAP_ADMIN_PASSWORD)` — truthiness.
+// An empty-string secret (`flyctl secrets set TAP_ADMIN_PASSWORD=""`)
+// silently disabled auth, leaving /api/webhook publicly unauthenticated.
+// Two tests lock that regression down:
+//
+//   1. `instrumentation.register()` must throw at boot when
+//      NODE_ENV=production and the secret is empty/unset. This is the
+//      primary defence — Fly's release-command runs instrumentation on
+//      every deploy, so a bad secret fails the deploy loudly.
+//
+//   2. Even if instrumentation somehow ran without the guard (future
+//      refactor, wrong NODE_ENV), the route handler itself must refuse
+//      to serve requests with a 503 rather than fall open. This is
+//      belt-and-suspenders, not a replacement.
+// ===========================================================================
+
+describe("/api/webhook production secret misconfiguration guard", () => {
+  let dbDir: string | null = null;
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    if (dbDir) {
+      try {
+        fs.rmSync(dbDir, { recursive: true, force: true });
+      } catch {
+        // best effort
+      }
+      dbDir = null;
+    }
+  });
+
+  it("instrumentation.register() throws in production when TAP_ADMIN_PASSWORD is empty", async () => {
+    dbDir = fs.mkdtempSync(path.join(os.tmpdir(), "smellgate-instr-"));
+    vi.stubEnv("DATABASE_PATH", path.join(dbDir, "cache.db"));
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("TAP_ADMIN_PASSWORD", "");
+    // Simulate the production Node runtime — instrumentation early-exits
+    // otherwise.
+    vi.stubEnv("NEXT_RUNTIME", "nodejs");
+    vi.resetModules();
+
+    const instr = await import("../../instrumentation");
+    await expect(instr.register()).rejects.toThrow(/TAP_ADMIN_PASSWORD/);
+  });
+
+  it("instrumentation.register() throws in production when TAP_ADMIN_PASSWORD is unset", async () => {
+    dbDir = fs.mkdtempSync(path.join(os.tmpdir(), "smellgate-instr-"));
+    vi.stubEnv("DATABASE_PATH", path.join(dbDir, "cache.db"));
+    vi.stubEnv("NODE_ENV", "production");
+    // vi.stubEnv cannot fully delete an env var across every Node shape,
+    // but stubbing to empty exercises the same `length === 0` branch and
+    // undefined hits the `typeof !== "string"` branch. Cover both by
+    // using the literal `delete process.env.FOO` here.
+    delete process.env.TAP_ADMIN_PASSWORD;
+    vi.stubEnv("NEXT_RUNTIME", "nodejs");
+    vi.resetModules();
+
+    const instr = await import("../../instrumentation");
+    await expect(instr.register()).rejects.toThrow(/TAP_ADMIN_PASSWORD/);
+  });
+
+  it("route handler returns 503 when NODE_ENV=production and password is empty", async () => {
+    dbDir = fs.mkdtempSync(path.join(os.tmpdir(), "smellgate-route-"));
+    vi.stubEnv("DATABASE_PATH", path.join(dbDir, "cache.db"));
+    vi.stubEnv("SMELLGATE_CURATOR_DIDS", CURATOR_DID);
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("TAP_ADMIN_PASSWORD", "");
+    vi.resetModules();
+
+    const migrations: MigrationsModule = await import(
+      "../../lib/db/migrations"
+    );
+    const { error } = await migrations.getMigrator().migrateToLatest();
+    if (error) throw error;
+    const route: RouteModule = await import("../../app/api/webhook/route");
+
+    // Any body will do — the misconfiguration check fires before
+    // body/auth parsing.
+    const res = await route.POST(makeRequest({ id: 1, type: "record" }));
+    expect(res.status).toBe(503);
+    const body = (await res.json()) as { error?: string };
+    expect(body.error).toMatch(/TAP_ADMIN_PASSWORD/);
+  });
+});

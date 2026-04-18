@@ -26,7 +26,7 @@ Required in production:
 - `PRIVATE_KEY` — ES256 JWK JSON string for OAuth client assertion signing. Generate locally with `pnpm gen-key`, then set as a Fly secret. Rotate only via redeploy; never set at runtime.
 - `SMELLGATE_CURATOR_DIDS` — comma-separated DIDs of curator accounts. Production value: `did:plc:l6l3piyd3hywg76f2udorm53` (handle [`smellgate.bsky.social`](https://bsky.app/profile/smellgate.bsky.social)). A second curator DID for Sam will be appended once that account exists.
 - `TAP_URL` — internal URL of the `smellgate-tap` Fly app, used by `lib/db/queries.ts` `getAccountHandle` to resolve DIDs via `getTap().resolveDid(...)`. Production value is `http://smellgate-tap.flycast:2480` so traffic stays inside Fly's private network. See "Tap consumer hosting" below.
-- `TAP_ADMIN_PASSWORD` — shared secret used for two things: (a) Basic-auth on Tap's HTTP API when the main app calls `resolveDid`, and (b) verifying incoming POSTs to `/api/webhook` came from our Tap instance rather than the public internet. Must match the value set on the `smellgate-tap` app byte-for-byte; generate once with `openssl rand -hex 32` (see "Tap consumer hosting" for the one-shot setup).
+- `TAP_ADMIN_PASSWORD` — shared secret. indigo's upstream Tap binary gates three surfaces behind this single value by design — outbound webhook auth (Tap → main app), inbound admin API auth (main app → Tap for `resolveDid`), and `/repos/add` DID enrollment. Rotation is therefore atomic and a leak compromises all three. This is an upstream indigo constraint, not a smellgate choice. Must be set to a non-empty string in production: `instrumentation.ts` hard-fails on boot when `NODE_ENV=production` and the secret is empty or unset, so a mis-config surfaces as a failed deploy rather than a silently-unauthenticated webhook. Generate once with `openssl rand -hex 32` (see "Tap consumer hosting" for the one-shot setup) and set the same value on both apps.
 
 Image-baked (set in the `Dockerfile`'s runner stage, not a Fly secret):
 
@@ -162,31 +162,43 @@ flyctl deploy --remote-only --config tap/fly.toml
 # 7. Seed Tap with the curator DID so `app.smellgate.perfume` records
 #    flow from day one (the signal-collection discovery only triggers
 #    on `app.smellgate.shelfItem`, and the curator doesn't write those).
-curl -X POST https://smellgate-tap.fly.dev/repos/add \
-  -u "admin:$TAP_ADMIN_PASSWORD" \
-  -H "Content-Type: application/json" \
-  -d '{"dids": ["did:plc:l6l3piyd3hywg76f2udorm53"]}'
-#
-# NOTE: The step-7 curl uses the PUBLIC fly.dev hostname for
-# convenience. smellgate-tap's fly.toml deliberately does NOT expose a
-# public HTTP listener (the `services.ports` block has `handlers=[]`),
-# so this curl must be run from a Fly wireguard tunnel
-# (`flyctl proxy 2480 -a smellgate-tap` then hit localhost:2480) or
-# via `flyctl ssh console -a smellgate-tap -C 'wget ...'`. Alternately,
-# flip the service to publicly exposed briefly for the one-off and
-# revert. The volume seeding here is one curl call.
+#    smellgate-tap's fly.toml deliberately does NOT expose a public HTTP
+#    listener (the `services.ports` block has `handlers = []`), so the
+#    seed call goes over a Fly wireguard proxy rather than the public
+#    *.fly.dev hostname. The helper script handles that:
+tap/seed-curator.sh did:plc:l6l3piyd3hywg76f2udorm53
 ```
 
 After step 6 plus step 7 run, every subsequent merge to `main` that touches `tap/**` deploys automatically. Every merge that touches anything else deploys only the main `smellgate` app.
 
+### Post-deploy sanity checks
+
+```sh
+# 1. How many repos is Tap subscribed to? Expect "1" right after step 7
+#    (the curator); grows as users write `app.smellgate.shelfItem`
+#    records and the signal-collection crawler picks them up.
+flyctl proxy 2480 -a smellgate-tap &
+sleep 2
+curl -s -u "admin:$TAP_ADMIN_PASSWORD" http://localhost:2480/stats/repo-count
+pkill -f "flyctl proxy 2480"
+
+# 2. Is the webhook flowing? Watch for `webhook: delivered` in Tap's
+#    logs as the curator's perfume records backfill, and matching 200s
+#    on /api/webhook in the main app's logs.
+flyctl logs --app smellgate-tap
+flyctl logs --app smellgate
+```
+
 ### Fly access token scope
 
-The `FLY_ACCESS_TOKEN` GitHub Actions secret (on the `production` environment) must grant deploy permission on **both** apps. Two options:
+The `FLY_ACCESS_TOKEN` GitHub Actions secret (on the `production` environment) must grant deploy permission on **both** apps. Use an **org-scoped deploy token**: one token, works for any current or future app in the org, and the blast radius of a leak is bounded by the GitHub Actions environment secret scoping anyway.
 
-- **Org-scoped deploy token** (simplest): `flyctl tokens create org <your-org>`. One token, works for any app in the org.
-- **Per-app tokens as comma-separated secret**: flyctl accepts a comma-delimited list of tokens in `FLY_ACCESS_TOKEN`. Mint one per app, concatenate, set as the secret.
+```sh
+flyctl tokens create org <your-org>
+# Paste the output into the GitHub repo's `production` environment secret FLY_ACCESS_TOKEN.
+```
 
-If the existing token was created with `flyctl tokens create deploy` before `smellgate-tap` existed, it's app-scoped to `smellgate` only and the Tap deploy workflow will fail with an auth error on first run. Rotate to one of the options above before merging the first PR that touches `tap/**`.
+If the existing token was created with `flyctl tokens create deploy` before `smellgate-tap` existed, it's app-scoped to `smellgate` only and the Tap deploy workflow will fail with an auth error on first run. Rotate to an org-scoped token (command above) before merging the first PR that touches `tap/**`. There's a hacky comma-delimited per-app-token form flyctl also accepts; don't use it for this — the org-scoped token is the right answer.
 
 ### End-to-end verification
 
