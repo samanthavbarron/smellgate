@@ -124,3 +124,4 @@ primary_region = "iad"
   memory = "512mb"
   cpu_kind = "shared"
   cpus = 1
+# token rotation smoke test (2026-04-18)
