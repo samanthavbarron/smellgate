@@ -38,7 +38,16 @@
  *   client. The `Tap` client throws on non-2xx and does not expose
  *   `AbortSignal`; a thin wrapper around `fetch` is both simpler and
  *   matches the login-path failure model (swallow everything).
+ * - Calls the pre-patch fetch (see `lib/auth/unpatched-fetch.ts`).
+ *   Next.js 16's route-handler `fetch` wrapper hangs indefinitely
+ *   against Fly `.internal` hostnames — against the OAuth callback
+ *   that was bounded by the 3s `AbortSignal` below so it didn't
+ *   stall the redirect, but it did mean every enrollment silently
+ *   timed out, which is issue #216's co-cause. Using the unpatched
+ *   fetch makes the POST actually complete.
  */
+
+import { getUnpatchedFetch } from "@/lib/auth/unpatched-fetch";
 
 const ENROLL_TIMEOUT_MS = 3000;
 
@@ -72,7 +81,7 @@ export async function enrollInTap(did: string): Promise<void> {
     "Basic " + Buffer.from(`admin:${pwd}`).toString("base64");
 
   try {
-    const res = await fetch(endpoint, {
+    const res = await getUnpatchedFetch()(endpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

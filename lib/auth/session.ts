@@ -12,42 +12,28 @@ import type { OAuthSession } from "@atproto/oauth-client-node";
  * `did` cookie started hanging indefinitely on the Fly app — visible
  * to users as "Login complete, you are being redirected..." followed
  * by a blank page that never loads. Reproduced in Playwright (see
- * `tests/e2e/oauth-login.spec.ts`). Trace shows the `GET /` that
- * follows the callback's 307 redirect never receives a single byte in
- * response — the Node process is stuck rendering the layout.
+ * `tests/e2e/oauth-login.spec.ts`).
  *
- * The stall is inside `@atproto/oauth-client`'s `client.restore(did)`:
- * its internal 30s abort signal does not fire, so neither does the
- * `usingLock` release. Once one request for a given DID wedges, every
- * subsequent request for that DID is serialised behind the same
- * `requestLocalLock` entry and also hangs — and because that lock Map
- * is at module scope inside
- * `@atproto/oauth-client/dist/lock.js` (NOT per-instance), the wedge
- * survives nulling our `NodeOAuthClient` singleton and persists until
- * the Node process restarts.
+ * Diagnostic logging on 2026-04-18 confirmed the real culprit was
+ * `getAccountHandle()` → `Tap.resolveDid()`: Next.js 16's patched
+ * `globalThis.fetch` hangs indefinitely against Fly `.internal`
+ * hostnames. `lib/tap/index.ts` now calls the pre-patch fetch with
+ * its own AbortSignal.timeout, which fixed login end-to-end.
  *
- * Root cause of why `restore()` wedges is still unconfirmed. PR #210
- * fixed a Next.js 16 / undici 7 fetch body-source bug on write paths
- * and `getUnpatchedFetch()` is wired into this codepath too, so
- * whatever is stalling here is NOT that specific bug. Tracked as
- * issue #219 ("Pin down root cause of OAuth `restore()` wedge in
- * Fly prod") — the Playwright trace + curl evidence lives there.
+ * `client.restore(did)` itself completed in ~200ms in every prod
+ * trace, so the 4s timeout here never actually fired. Kept as a
+ * defensive backstop: if a future failure mode does cause `restore`
+ * to stall (library-level `requestLocalLock` wedge, upstream regression,
+ * etc.) the page will still draw rather than hang on a blank screen.
  *
  * What this timeout buys us
  * -------------------------
- * Keep the page responsive. If `restore()` doesn't resolve in the
- * budget, treat the visitor as signed-out for this render and let
- * the rest of the page draw. Re-auth surfaces the LoginForm; browse
- * keeps working for everyone. Every subsequent request for the same
- * stuck DID will also time out at 4s until either the process
- * restarts or issue #220 ships a real lock-level fix — see
- * `resetOAuthClient` in `./client.ts` for why the singleton reset
- * alone is not enough.
- *
- * 4s is the budget. Real restores on prod complete in well under
- * 200ms; any value this large is already a stall. Page-render budget
- * on the home layout is ~1.5s, so a 4s miss is visible but still far
- * better than "indefinite white screen". See `tests/e2e/oauth-login.spec.ts`.
+ * Keep the page responsive. If `restore()` ever doesn't resolve in
+ * the budget, treat the visitor as signed-out for this render and
+ * let the rest of the page draw. 4s is the budget — real restores
+ * on prod complete in well under 200ms — and a 4s miss is visible
+ * but still far better than "indefinite white screen".
+ * See `tests/e2e/oauth-login.spec.ts`.
  */
 const RESTORE_TIMEOUT_MS = 4000;
 
