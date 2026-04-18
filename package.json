@@ -22,7 +22,8 @@
     "lint": "eslint",
     "typecheck": "pnpm build:lex && tsc --noEmit",
     "test": "vitest run tests/unit",
-    "test:integration": "vitest run tests/integration"
+    "test:integration": "vitest run tests/integration",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@atproto/common-web": "^0.4.11",
@@ -39,6 +40,7 @@
   },
   "devDependencies": {
     "@atproto/dev-env": "^0.4.3",
+    "@playwright/test": "^1.59.1",
     "@tailwindcss/postcss": "^4",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20",

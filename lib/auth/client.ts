@@ -72,6 +72,36 @@ async function getKeyset(): Promise<Keyset | undefined> {
   }
 }
 
+/**
+ * Discard the cached `NodeOAuthClient` singleton so the next call to
+ * `getOAuthClient()` rebuilds it from scratch.
+ *
+ * ⚠️ This does NOT self-heal a wedged `client.restore()`. The
+ * `@atproto/oauth-client` library serialises `restore()` per-DID
+ * through `requestLocalLock`, which stores its `Map<name, Promise>`
+ * at **module scope**
+ * (`node_modules/.../@atproto/oauth-client/dist/lock.js`). That map
+ * is shared across every `NodeOAuthClient` instance in the process,
+ * so nulling our singleton does not clear a stuck entry. Subsequent
+ * requests for the same DID will re-enter the same wedged lock and
+ * time out again at the `getSession()` budget — that 4s-per-request
+ * timeout is the only recovery short of a process restart.
+ *
+ * What the reset DOES give us is a fresh `CachedGetter.pending` map
+ * (the other source of per-DID dead-promise parking, which IS
+ * instance-local) and clean dpop-nonce / resolver caches. It makes
+ * *subsequent* healthy operations recover faster than re-using a
+ * poisoned client.
+ *
+ * A real self-heal requires injecting a custom `requestLock` into
+ * `NodeOAuthClient` so we own the lock map and can evict entries.
+ * Tracked as issue #220. Root-cause investigation of the wedge
+ * itself is issue #219.
+ */
+export function resetOAuthClient(): void {
+  client = null;
+}
+
 export async function getOAuthClient(): Promise<NodeOAuthClient> {
   if (client) return client;
 

@@ -52,3 +52,12 @@ next-env.d.ts
 # directory holds OAuth `did` cookies — neither belongs in git.
 /.smellgate-dev-env.json
 /.smellgate-agent-sessions/
+
+# Playwright E2E (tests/e2e)
+# Test artifacts + any local secrets/credentials file used by the
+# OAuth login test. Never commit bsky account passwords.
+/tests/e2e/.secrets
+/tests/e2e/.env
+/playwright-report
+/test-results
+/tests/e2e/artifacts
