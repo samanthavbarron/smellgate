@@ -16,10 +16,14 @@
           },
           "acquiredAt": {
             "type": "string",
-            "format": "datetime"
+            "format": "datetime",
+            "description": "When the user acquired this perfume. ATProto lexicons can't bound a datetime, so 'not in the future' and 'not absurdly ancient' are enforced at the write layer (see lib/server/write-guards.ts); this field stays a plain datetime for the on-network contract."
           },
           "bottleSizeMl": {
-            "type": "integer"
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000,
+            "description": "Bottle size in millilitres. 1000 ml (1 L) covers every real production bottle; anything above is junk data. Matches the write-layer cap."
           },
           "isDecant": {
             "type": "boolean"

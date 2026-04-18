@@ -28,4 +28,48 @@ describe('app.smellgate.perfumeSubmission validator', () => {
       expect(result.success).toBe(false)
     })
   }
+
+  // Programmatic boundary assertions for the notes + description bounds (#174).
+  // Pin the exact edges so that a later lexicon loosen/tighten can't silently
+  // drift the bound without a failing test.
+  describe('notes + description bounds (#174)', () => {
+    const build = (overrides: Record<string, unknown>) => ({
+      $type: 'app.smellgate.perfumeSubmission',
+      name: 'Bounded',
+      house: 'Bounded House',
+      notes: ['rose'],
+      createdAt: '2024-02-01T08:00:00.000Z',
+      ...overrides,
+    })
+
+    it('accepts an array of exactly 50 notes (inclusive upper bound)', () => {
+      const notes = Array.from({ length: 50 }, (_, i) => `note${i}`)
+      expect($safeParse(build({ notes })).success).toBe(true)
+    })
+
+    it('rejects an array of 51 notes (just past the upper bound)', () => {
+      const notes = Array.from({ length: 51 }, (_, i) => `note${i}`)
+      expect($safeParse(build({ notes })).success).toBe(false)
+    })
+
+    it('accepts a note item of exactly 100 graphemes (inclusive)', () => {
+      expect($safeParse(build({ notes: ['a'.repeat(100)] })).success).toBe(true)
+    })
+
+    it('rejects a note item of 101 graphemes', () => {
+      expect($safeParse(build({ notes: ['a'.repeat(101)] })).success).toBe(false)
+    })
+
+    it('accepts description of exactly 15000 graphemes (inclusive)', () => {
+      expect(
+        $safeParse(build({ description: 'd'.repeat(15000) })).success,
+      ).toBe(true)
+    })
+
+    it('rejects description of 15001 graphemes', () => {
+      expect(
+        $safeParse(build({ description: 'd'.repeat(15001) })).success,
+      ).toBe(false)
+    })
+  })
 })
