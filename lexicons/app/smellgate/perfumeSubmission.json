@@ -10,18 +10,22 @@
         "required": ["name", "house", "notes", "createdAt"],
         "properties": {
           "name": {
-            "type": "string"
+            "type": "string",
+            "maxGraphemes": 200
           },
           "house": {
             "type": "string",
+            "maxGraphemes": 200,
             "description": "The perfume house / brand."
           },
           "creator": {
             "type": "string",
+            "maxGraphemes": 200,
             "description": "The perfumer / nose, when known."
           },
           "releaseYear": {
-            "type": "integer"
+            "type": "integer",
+            "minimum": 1700
           },
           "notes": {
             "type": "array",
