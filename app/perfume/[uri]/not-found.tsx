@@ -1,6 +1,16 @@
 /**
- * Scoped 404 UI for `/perfume/[uri]` (issue #123). Next.js renders
- * this automatically when `page.tsx` calls `notFound()`.
+ * Scoped 404 UI for `/perfume/[uri]` (issue #123). Exported so the
+ * adjacent `page.tsx` can render it inline when the perfume URI
+ * doesn't resolve — see the Next.js 16 mid-stream bailout note in
+ * `page.tsx` for why inline rendering is load-bearing here (not
+ * `notFound()`).
+ *
+ * Also registered as Next.js's scoped `not-found.tsx` at this segment
+ * so any future `notFound()` call from a deeper child (e.g. the
+ * composer routes under `/perfume/[uri]/review/new`) picks this up
+ * rather than the global `app/not-found.tsx`. Those cases currently
+ * fall back to the global because the matching pages don't call
+ * `notFound()` themselves.
  */
 import Link from "next/link";
 
