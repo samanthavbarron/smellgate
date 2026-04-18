@@ -10,6 +10,7 @@ import type {
   OAuthClientMetadataInput,
 } from "@atproto/oauth-client-node";
 import { getDb } from "../db";
+import { getUnpatchedFetch } from "./unpatched-fetch";
 
 export const SCOPE = "atproto transition:generic";
 
@@ -77,6 +78,38 @@ export async function getOAuthClient(): Promise<NodeOAuthClient> {
   client = new NodeOAuthClient({
     clientMetadata: getClientMetadata(),
     keyset: await getKeyset(),
+
+    // Production bug (prod trace 2026-04-18T03:15:50Z): every write path
+    // (shelf-add, review, description, vote, comment, submission) crashes
+    // with `TypeError: fetch failed` / `expected non-null body source`
+    // on Fly's Node 24 alpine runtime. Root cause is an interaction
+    // between Next.js 16's `patch-fetch` wrapper, `@atproto/oauth-client`'s
+    // DPoP `new Request(input, init)` call, and the undici 7 bundled with
+    // Node 24.15+ (24.11 does not trigger it, which is why integration
+    // tests on the Codespace pass).
+    //
+    // The sequence:
+    //   1. dpopFetchWrapper builds `new Request(url, { body: string, ... })`
+    //      — undici sets `body.source` to the string, so the body is
+    //      re-extractable.
+    //   2. It then calls `fetch(request)`. In Next's route-handler
+    //      runtime, this `fetch` is the patched one.
+    //   3. Next's patched fetch (see `doOriginalFetch` in
+    //      `next/dist/server/lib/patch-fetch.js`) sees the Request and
+    //      rebuilds it: `new Request(request.url, { body: request.body })`
+    //      — now `body` is a ReadableStream and `body.source` is null.
+    //   4. The PDS responds 401 (DPoP nonce challenge). undici 7's fetch
+    //      spec-compliant retry path then runs `safelyExtractBody(
+    //      request.body.source)` on the credentialed retry — and throws
+    //      `expected non-null body source` because `source` is null.
+    //
+    // Fix: give the OAuth client a fetch that bypasses Next's patch, so
+    // the dpop-wrapped Request is the only Request (single wrap →
+    // `body.source` preserved → undici's 401 retry can re-extract it).
+    // The PDS traffic is server-to-server and never benefits from Next's
+    // fetch cache anyway (POST, Authorization header), so bypassing the
+    // wrap costs nothing. See `lib/auth/unpatched-fetch.ts` for details.
+    fetch: getUnpatchedFetch(),
 
     // Dev-network gate: when both env vars are set (by `pnpm dev:network`),
     // resolve handles + DIDs against the local in-process PDS/PLC instead
