@@ -1,0 +1,12 @@
+{
+  "$type": "app.smellgate.review",
+  "perfume": {
+    "uri": "at://did:plc:fixturecuratorxxxxxxxxxx/app.smellgate.perfume/3kxyz222bbb",
+    "cid": "bafyreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku"
+  },
+  "rating": 7,
+  "sillage": 0,
+  "longevity": 4,
+  "body": "Sillage below the 1-5 minimum.",
+  "createdAt": "2024-02-12T14:00:00.000Z"
+}

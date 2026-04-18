@@ -2,7 +2,7 @@
  * POST /api/smellgate/curator/approve — curator-only.
  *
  * Wraps `approveSubmissionAction`: writes a canonical
- * `com.smellgate.perfume` + a `perfumeSubmissionResolution` to the
+ * `app.smellgate.perfume` + a `perfumeSubmissionResolution` to the
  * curator's PDS.
  */
 

@@ -3,7 +3,7 @@
 /**
  * Description composer (Phase 4.D, issue #69).
  *
- * Writes a `com.smellgate.description` record for the target perfume
+ * Writes a `app.smellgate.description` record for the target perfume
  * via `/api/smellgate/description`, then redirects back to the
  * perfume detail page. See CommentComposer header for the "client
  * component + fetch" rationale.

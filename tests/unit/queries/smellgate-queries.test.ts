@@ -93,7 +93,7 @@ async function seedPerfume(
   db: DbIndexModule,
   seed: PerfumeSeed,
 ): Promise<string> {
-  const k = seed.uri ?? atUri(CURATOR, "com.smellgate.perfume", `p${seq + 1}`);
+  const k = seed.uri ?? atUri(CURATOR, "app.smellgate.perfume", `p${seq + 1}`);
   const indexedAt = nextIndexedAt();
   await db
     .getDb()
@@ -127,7 +127,7 @@ async function seedShelfItem(
   author: string,
   perfumeUri: string,
 ): Promise<string> {
-  const uri = atUri(author, "com.smellgate.shelfItem", `s${seq + 1}`);
+  const uri = atUri(author, "app.smellgate.shelfItem", `s${seq + 1}`);
   const indexedAt = nextIndexedAt();
   await db
     .getDb()
@@ -154,7 +154,7 @@ async function seedReview(
   perfumeUri: string,
   body = "nice",
 ): Promise<string> {
-  const uri = atUri(author, "com.smellgate.review", `r${seq + 1}`);
+  const uri = atUri(author, "app.smellgate.review", `r${seq + 1}`);
   const indexedAt = nextIndexedAt();
   await db
     .getDb()
@@ -182,7 +182,7 @@ async function seedDescription(
   perfumeUri: string,
   body = "smells like",
 ): Promise<string> {
-  const uri = atUri(author, "com.smellgate.description", `d${seq + 1}`);
+  const uri = atUri(author, "app.smellgate.description", `d${seq + 1}`);
   const indexedAt = nextIndexedAt();
   await db
     .getDb()
@@ -207,7 +207,7 @@ async function seedVote(
   subjectUri: string,
   direction: "up" | "down",
 ): Promise<string> {
-  const uri = atUri(author, "com.smellgate.vote", `v${seq + 1}`);
+  const uri = atUri(author, "app.smellgate.vote", `v${seq + 1}`);
   const indexedAt = nextIndexedAt();
   await db
     .getDb()
@@ -232,7 +232,7 @@ async function seedComment(
   reviewUri: string,
   body: string,
 ): Promise<string> {
-  const uri = atUri(author, "com.smellgate.comment", `c${seq + 1}`);
+  const uri = atUri(author, "app.smellgate.comment", `c${seq + 1}`);
   const indexedAt = nextIndexedAt();
   await db
     .getDb()
@@ -256,7 +256,7 @@ async function seedSubmission(
   author: string,
   name: string,
 ): Promise<string> {
-  const uri = atUri(author, "com.smellgate.perfumeSubmission", `sb${seq + 1}`);
+  const uri = atUri(author, "app.smellgate.perfumeSubmission", `sb${seq + 1}`);
   const indexedAt = nextIndexedAt();
   await db
     .getDb()
@@ -285,7 +285,7 @@ async function seedResolution(
 ): Promise<string> {
   const uri = atUri(
     CURATOR,
-    "com.smellgate.perfumeSubmissionResolution",
+    "app.smellgate.perfumeSubmissionResolution",
     `rs${seq + 1}`,
   );
   const indexedAt = nextIndexedAt();
@@ -341,7 +341,7 @@ describe("smellgate-queries", () => {
     it("returns null for an unknown URI", async () => {
       const got = await env.q.getPerfumeByUri(
         env.db.getDb(),
-        "at://did:plc:nobody/com.smellgate.perfume/ghost",
+        "at://did:plc:nobody/app.smellgate.perfume/ghost",
       );
       expect(got).toBeNull();
     });
@@ -480,7 +480,7 @@ describe("smellgate-queries", () => {
       // a shelf item can arrive before its referenced perfume.
       const missingPerfume = atUri(
         CURATOR,
-        "com.smellgate.perfume",
+        "app.smellgate.perfume",
         "ghost",
       );
       await seedShelfItem(env.db, USER_A, missingPerfume);
@@ -811,7 +811,7 @@ describe("smellgate-queries", () => {
     it("returns null when the review does not exist", async () => {
       const got = await env.q.getReviewByUri(
         env.db.getDb(),
-        "at://did:plc:nobody/com.smellgate.review/ghost",
+        "at://did:plc:nobody/app.smellgate.review/ghost",
       );
       expect(got).toBeNull();
     });
@@ -884,7 +884,7 @@ describe("smellgate-queries", () => {
     });
 
     it("returns perfume: null when the referenced perfume row is missing", async () => {
-      const missing = atUri(CURATOR, "com.smellgate.perfume", "ghost");
+      const missing = atUri(CURATOR, "app.smellgate.perfume", "ghost");
       await seedReview(env.db, USER_A, missing, "orphan");
       const got = await env.q.getRecentReviews(env.db.getDb());
       expect(got).toHaveLength(1);

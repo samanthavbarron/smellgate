@@ -143,12 +143,12 @@ describe("/api/webhook route wiring", () => {
     env.dispose();
   });
 
-  it("dispatches a com.smellgate.perfume event to the read cache", async () => {
+  it("dispatches a app.smellgate.perfume event to the read cache", async () => {
     const body = recordEventBody(
-      "com.smellgate.perfume",
+      "app.smellgate.perfume",
       CURATOR_DID,
       {
-        $type: "com.smellgate.perfume",
+        $type: "app.smellgate.perfume",
         name: "Aventus",
         house: "Creed",
         creator: "Olivier Creed",
@@ -182,10 +182,10 @@ describe("/api/webhook route wiring", () => {
     expect(notes.map((n) => n.note)).toEqual(["birch", "musk", "pineapple"]);
   });
 
-  it("dispatches a com.smellgate.review event to the read cache", async () => {
-    const perfumeRefUri = `at://${CURATOR_DID}/com.smellgate.perfume/3kgperfumeref`;
-    const body = recordEventBody("com.smellgate.review", USER_DID, {
-      $type: "com.smellgate.review",
+  it("dispatches a app.smellgate.review event to the read cache", async () => {
+    const perfumeRefUri = `at://${CURATOR_DID}/app.smellgate.perfume/3kgperfumeref`;
+    const body = recordEventBody("app.smellgate.review", USER_DID, {
+      $type: "app.smellgate.review",
       perfume: { uri: perfumeRefUri, cid: FAKE_CID },
       rating: 8,
       sillage: 3,
@@ -208,12 +208,12 @@ describe("/api/webhook route wiring", () => {
     expect(row.author_did).toBe(USER_DID);
   });
 
-  it("drops a com.smellgate.perfume event authored by a non-curator", async () => {
+  it("drops a app.smellgate.perfume event authored by a non-curator", async () => {
     // The curator gate is applied inside dispatchSmellgateEvent; the
     // route handler just forwards. This confirms the wiring preserves
     // that gate end-to-end.
-    const body = recordEventBody("com.smellgate.perfume", USER_DID, {
-      $type: "com.smellgate.perfume",
+    const body = recordEventBody("app.smellgate.perfume", USER_DID, {
+      $type: "app.smellgate.perfume",
       name: "Impostor",
       house: "Nowhere",
       notes: ["vanilla"],

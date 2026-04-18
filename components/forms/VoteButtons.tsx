@@ -3,7 +3,7 @@
 /**
  * Vote buttons (Phase 4.D, issue #69).
  *
- * Inline up/down controls on a `com.smellgate.description` card,
+ * Inline up/down controls on a `app.smellgate.description` card,
  * replacing the Phase 4.B disabled stubs. POSTs to
  * `/api/smellgate/vote` with `{ descriptionUri, direction }`; on
  * success, triggers `router.refresh()` so the server component

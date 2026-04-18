@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
-const FIXTURES_DIR = join(__dirname, '..', '..', 'fixtures', 'com', 'smellgate')
+const FIXTURES_DIR = join(__dirname, '..', '..', 'fixtures', 'app', 'smellgate')
 
 function loadFixture(name: string): unknown {
   const raw = readFileSync(join(FIXTURES_DIR, name), 'utf8')

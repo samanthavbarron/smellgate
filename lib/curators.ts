@@ -1,8 +1,8 @@
 /**
  * Curator-DID identity check.
  *
- * Per docs/lexicons.md, `com.smellgate.perfume` and
- * `com.smellgate.perfumeSubmissionResolution` are curator-only record types:
+ * Per docs/lexicons.md, `app.smellgate.perfume` and
+ * `app.smellgate.perfumeSubmissionResolution` are curator-only record types:
  * only a configured curator account is allowed to author them. The read layer
  * (Phase 2) will use `isCurator()` to refuse to index such records from
  * non-curator DIDs.

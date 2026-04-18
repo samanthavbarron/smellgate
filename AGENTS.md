@@ -21,7 +21,7 @@ A fresh session resuming this work should: (1) read this file end-to-end **start
 The previous session finished a local multi-agent bug-bash that filed 33 issues under `bugbash-*` labels. 6 are classified as ship-blockers and gate Phase 5 deploy via issue [#99](https://github.com/samanthavbarron/smellgate/issues/99). Before any deployment work, the recommended order of operations is:
 
 1. **Land the `writeGuards` PR.** One cohesive PR covering all 6 bugbash-blockers — they share a single root cause (the write layer is too trusting), so shipping them together keeps the defensive posture consistent and lets one adversarial reviewer verify them against one coherent threat model. The blockers are:
-   - **[#128](https://github.com/samanthavbarron/smellgate/issues/128)** — normalize `com.smellgate.perfume.notes` and `perfumeSubmission.notes` (trim, lowercase, dedupe, reject whitespace-only) in `lib/server/smellgate-actions.ts` and `lib/server/smellgate-curator-actions.ts`.
+   - **[#128](https://github.com/samanthavbarron/smellgate/issues/128)** — normalize `app.smellgate.perfume.notes` and `perfumeSubmission.notes` (trim, lowercase, dedupe, reject whitespace-only) in `lib/server/smellgate-actions.ts` and `lib/server/smellgate-curator-actions.ts`.
    - **[#129](https://github.com/samanthavbarron/smellgate/issues/129), [#130](https://github.com/samanthavbarron/smellgate/issues/130)** — sanitize or reject raw HTML in free-text fields at the write layer: perfume/submission description, community description, review body, comment body.
    - **[#141](https://github.com/samanthavbarron/smellgate/issues/141)** — audit `app/perfume/[uri]/page.tsx`, `app/profile/[did]/page.tsx`, `app/page.tsx` for HTML escaping; add a regression test that writes a `<script>alert(1)</script>` description body and asserts the rendered HTML escapes it.
    - **[#135](https://github.com/samanthavbarron/smellgate/issues/135)** — add `author_did !== subject_author_did` guard on `voteOnDescriptionAction`, and add a "one latest vote per (author, subject)" guard at write time (not only read-time dedupe).
@@ -103,7 +103,7 @@ The goal is not ceremony. The goal is: two independent agents looked at this, an
   - `components/forms/` — client composer forms (Shelf, Review, Description, Vote, Comment, PerfumeSubmission)
   - `components/curator/` — curator-side client components
 - [lexicons/](lexicons/) — ATProto lexicon JSON
-  - `lexicons/com/smellgate/` — our 8 record types (the data model; see [docs/lexicons.md](docs/lexicons.md))
+  - `lexicons/app/smellgate/` — our 8 record types (the data model; see [docs/lexicons.md](docs/lexicons.md))
   - `lexicons/com/atproto/repo/strongRef.json` — vendored upstream lexicon for cross-references
   - `lexicons/xyz/statusphere/status.json` — legacy starter lexicon, still used by the webhook's statusphere branch
 - [lib/auth/](lib/auth/) — OAuth client wiring (hosted metadata via `PUBLIC_URL` + `PRIVATE_KEY`, loopback fallback for local dev)
@@ -127,7 +127,7 @@ The goal is not ceremony. The goal is: two independent agents looked at this, an
   - `tests/helpers/pds.ts` — `startEphemeralPds`, `createTestAccounts`, `createTestOAuthClient` (in-process PDS via `@atproto/dev-env`)
   - `tests/unit/` — unit tests (93+ total across lexicons, queries, curators, seed-catalog)
   - `tests/integration/` — integration tests (43+ total: OAuth, Tap dispatch, webhook, cache rebuild, server actions, curator flow)
-  - `tests/fixtures/com/smellgate/` — lexicon validator fixtures
+  - `tests/fixtures/app/smellgate/` — lexicon validator fixtures
   - `tests/fixtures/seed-catalog.json` — 75 synthetic perfumes
 - [docs/](docs/)
   - `docs/lexicons.md` — **data model source of truth.** Read before modifying any record type.
@@ -163,7 +163,7 @@ Rebrand (#4), Vitest harness (#6), local in-process PDS via `@atproto/dev-env` (
 
 ### ✅ Phase 1 — Data model (DONE)
 
-Pattern B (Bookhive-style operator-curated catalog; see [docs/lexicons.md](docs/lexicons.md) for the rationale and rejected alternatives). 8 record types under `com.smellgate.*`, fixtures + validator tests (#31 / PR #34). Curator enforcement library `lib/curators.ts` with env-var-driven DID list (#32 / PR #37). Synthetic seed catalog of 75 fake perfumes at `tests/fixtures/seed-catalog.json` (#33 / PR #39).
+Pattern B (Bookhive-style operator-curated catalog; see [docs/lexicons.md](docs/lexicons.md) for the rationale and rejected alternatives). 8 record types under `app.smellgate.*`, fixtures + validator tests (#31 / PR #34). Curator enforcement library `lib/curators.ts` with env-var-driven DID list (#32 / PR #37). Synthetic seed catalog of 75 fake perfumes at `tests/fixtures/seed-catalog.json` (#33 / PR #39).
 
 ### ✅ Phase 2 — Read path (DONE)
 

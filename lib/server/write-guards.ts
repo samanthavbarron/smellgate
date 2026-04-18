@@ -11,8 +11,8 @@
  * Two concerns live here:
  *
  *   1. `normalizeNotes` — canonicalize a `notes[]` array for
- *      `com.smellgate.perfumeSubmission` (and, via the curator approve
- *      path, for `com.smellgate.perfume`). NFC unicode, trim, collapse
+ *      `app.smellgate.perfumeSubmission` (and, via the curator approve
+ *      path, for `app.smellgate.perfume`). NFC unicode, trim, collapse
  *      internal whitespace, lowercase, strip leading/trailing emoji,
  *      dedupe in order. Rejects whitespace-only entries (issue #128).
  *

@@ -1,0 +1,8 @@
+{
+  "$type": "app.smellgate.comment",
+  "subject": {
+    "uri": "at://did:plc:fixtureusersxxxxxxxxxxxxx/app.smellgate.review/3kxyz444ddd",
+    "cid": "bafyreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku"
+  },
+  "body": "A comment missing its createdAt timestamp."
+}

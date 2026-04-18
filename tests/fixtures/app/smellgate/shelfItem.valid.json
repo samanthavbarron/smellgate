@@ -1,0 +1,11 @@
+{
+  "$type": "app.smellgate.shelfItem",
+  "perfume": {
+    "uri": "at://did:plc:fixturecuratorxxxxxxxxxx/app.smellgate.perfume/3kxyz222bbb",
+    "cid": "bafyreihdwdcefgh4dqkjv67uzcmw7ojee6xedzdetojuzjevtenxquvyku"
+  },
+  "acquiredAt": "2023-12-01T00:00:00.000Z",
+  "bottleSizeMl": 50,
+  "isDecant": false,
+  "createdAt": "2024-02-10T09:00:00.000Z"
+}

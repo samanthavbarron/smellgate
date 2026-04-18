@@ -4,19 +4,19 @@ This document is the source of truth for smellgate's data model. If you're imple
 
 ## NSID namespace
 
-All smellgate lexicons live under **`com.smellgate.*`** (the reverse of `smellgate.com`, which we own). Examples: `com.smellgate.perfume`, `com.smellgate.shelfItem`, `com.smellgate.review`.
+All smellgate lexicons live under **`app.smellgate.*`** (the reverse of `smellgate.app`, the domain we own). Examples: `app.smellgate.perfume`, `app.smellgate.shelfItem`, `app.smellgate.review`.
 
-We publish lexicon authority via a DNS TXT record on `_lexicon.smellgate.com` before any records are written under this namespace in production. Until that's done, use `com.smellgate.*` in development but do not expect records written against an uncontrolled namespace to be authoritative.
+We publish lexicon authority via a DNS TXT record on `_lexicon.smellgate.app` so that records written under this namespace can be machine-verified as authoritative.
 
 ### Lexicon authority publication
 
-Per ATProto's [NSID resolution](https://atproto.com/specs/nsid) approach, the authority for an NSID is the DNS owner of the reversed domain. We own `smellgate.com`, which makes us the authority for everything under `com.smellgate.*`. To make this assertion machine-checkable, we publish a DNS TXT record at the conventional `_lexicon.<domain>` location:
+Per ATProto's [NSID resolution](https://atproto.com/specs/nsid) approach, the authority for an NSID is the DNS owner of the reversed domain. We own `smellgate.app`, which makes us the authority for everything under `app.smellgate.*`. To make this assertion machine-checkable, we publish a DNS TXT record at the conventional `_lexicon.<domain>` location:
 
-- **Hostname:** `_lexicon.smellgate.com`
+- **Hostname:** `_lexicon.smellgate.app`
 - **Type:** `TXT`
 - **Value:** `did=<curator-account-DID>` — the DID of the smellgate curator account that owns the lexicon definitions. (The exact text format follows the [ATProto NSID resolution](https://atproto.com/specs/nsid) spec; if the spec has moved on by the time this is set, follow the spec, not this doc.)
 
-**Status:** not yet set. Samantha needs to add this record before any production records are written under `com.smellgate.*` (i.e. before Phase 1 lands a curator-PDS seed against a real, non-test PDS). Coding agents cannot make DNS changes; if you reach a point where this becomes blocking, halt and ask. Local development and integration tests against an ephemeral PDS do not require the record to exist.
+**Status:** set. `_lexicon.smellgate.app` resolves to a TXT record with value `did=did:plc:l6l3piyd3hywg76f2udorm53` (confirmed via DNS-over-HTTPS). This is the DID of [`smellgate.bsky.social`](https://bsky.app/profile/smellgate.bsky.social), the production curator account. Local development and integration tests against an ephemeral PDS do not rely on the record.
 
 ## The canonical-identity problem, and how we solve it
 
@@ -29,11 +29,11 @@ We surveyed how other ATProto apps handle this for shared catalogs (books/movies
 
 The Skylights pattern does not work for us: the perfume-world equivalents of TMDB/Open Library (Parfumo, Fragrantica, Basenotes) have terms of service that broadly prohibit the kind of scraping and redistribution we'd need, and there is no free, legally clean canonical ID space to delegate to.
 
-**We adopt the Bookhive pattern.** A single operator-curated account publishes the canonical `com.smellgate.perfume` records. All user-authored records (shelf items, reviews, descriptions, votes, comments) reference a canonical perfume record by AT-URI. Users who want to add a perfume that doesn't exist yet write a `com.smellgate.perfumeSubmission` record, which curators review and (on approval) publish as a canonical `perfume`.
+**We adopt the Bookhive pattern.** A single operator-curated account publishes the canonical `app.smellgate.perfume` records. All user-authored records (shelf items, reviews, descriptions, votes, comments) reference a canonical perfume record by AT-URI. Users who want to add a perfume that doesn't exist yet write a `app.smellgate.perfumeSubmission` record, which curators review and (on approval) publish as a canonical `perfume`.
 
 ### Curator account
 
-- Identity: [`smellgate.bsky.social`](https://bsky.app/profile/smellgate.bsky.social), DID `did:plc:l6l3piyd3hywg76f2udorm53`. Its PDS holds the authoritative `com.smellgate.perfume` collection.
+- Identity: [`smellgate.bsky.social`](https://bsky.app/profile/smellgate.bsky.social), DID `did:plc:l6l3piyd3hywg76f2udorm53`. Its PDS holds the authoritative `app.smellgate.perfume` collection.
 - Curators: Samantha and Sam, manually, to start. No automated auto-approval in the initial implementation — humans look at every submission. This is acceptable because the initial catalog is small and the submission rate is zero.
 - Curator tooling lives inside the smellgate app, gated by a config list of curator DIDs. This is the only piece of the app that has a concept of "admin" — keep it simple, no roles/permissions system.
 
@@ -54,7 +54,7 @@ When real users show up and submit real perfumes, the catalog will accumulate re
 
 All records use `tid` keys (the ATProto default for timestamp-ordered records) unless noted. All cross-record references use [`com.atproto.repo.strongRef`](https://atproto.com/specs/data-model#blob-type) (URI + CID) so references are immutable: if a curator edits a perfume record, existing reviews still pin the version they were written against.
 
-### `com.smellgate.perfume` — canonical catalog entry
+### `app.smellgate.perfume` — canonical catalog entry
 
 **Written by:** curator account only. Enforced at the app layer (the app refuses to surface or index `perfume` records authored by non-curator DIDs).
 
@@ -68,11 +68,11 @@ Fields:
 - `externalRefs` (array of objects, optional) — future-proofing for if we ever want to link out. Each: `{source: string, url: string}`. Do not use as a primary key.
 - `createdAt` (datetime, required)
 
-### `com.smellgate.perfumeSubmission` — user-proposed perfume
+### `app.smellgate.perfumeSubmission` — user-proposed perfume
 
 **Written by:** any authenticated user.
 
-A submission is a proposal to add a perfume to the canonical catalog. Curators review it and either (a) publish a corresponding `com.smellgate.perfume` record and mark the submission resolved, or (b) reject it.
+A submission is a proposal to add a perfume to the canonical catalog. Curators review it and either (a) publish a corresponding `app.smellgate.perfume` record and mark the submission resolved, or (b) reject it.
 
 Fields: same shape as `perfume` (name/house/creator/releaseYear/notes/description), plus:
 - `rationale` (string, optional, min 1 if present) — user's note to the curator. `minLength: 1` so an empty-string rationale is rejected at the lexicon layer (the field is optional, but if present it must carry content).
@@ -80,31 +80,31 @@ Fields: same shape as `perfume` (name/house/creator/releaseYear/notes/descriptio
 
 There is no `status` field on the submission itself. Resolution is tracked by a separate curator-authored record (see `perfumeSubmissionResolution` below) so that submissions remain append-only from the submitter's perspective.
 
-### `com.smellgate.perfumeSubmissionResolution` — curator decision
+### `app.smellgate.perfumeSubmissionResolution` — curator decision
 
 **Written by:** curator account only.
 
 - `submission` (strongRef to a `perfumeSubmission`, required)
 - `decision` (string enum: `"approved"` | `"rejected"` | `"duplicate"`, required)
-- `perfume` (strongRef to a `com.smellgate.perfume`, optional) — set when `decision` is `"approved"` or `"duplicate"`; points at the canonical record the submission resolved to
+- `perfume` (strongRef to a `app.smellgate.perfume`, optional) — set when `decision` is `"approved"` or `"duplicate"`; points at the canonical record the submission resolved to
 - `note` (string, optional) — curator's explanation, shown to the submitter
 - `createdAt` (datetime, required)
 
-### `com.smellgate.shelfItem` — a perfume on a user's shelf
+### `app.smellgate.shelfItem` — a perfume on a user's shelf
 
 **Written by:** any user, about their own shelf.
 
-- `perfume` (strongRef to `com.smellgate.perfume`, required)
+- `perfume` (strongRef to `app.smellgate.perfume`, required)
 - `acquiredAt` (datetime, optional)
 - `bottleSizeMl` (integer, optional)
 - `isDecant` (boolean, optional)
 - `createdAt` (datetime, required)
 
-### `com.smellgate.review` — a user's review of a perfume
+### `app.smellgate.review` — a user's review of a perfume
 
 **Written by:** any user.
 
-- `perfume` (strongRef to `com.smellgate.perfume`, required)
+- `perfume` (strongRef to `app.smellgate.perfume`, required)
 - `rating` (integer 1–10, required) — overall
 - `sillage` (integer 1–5, required)
 - `longevity` (integer 1–5, required)
@@ -113,29 +113,29 @@ There is no `status` field on the submission itself. Resolution is tracked by a 
 
 Scale choice: 1–10 for overall (gives more room for nuance than 1–5, and mirrors Letterboxd's half-star-of-5 system when halved for display); 1–5 for sillage and longevity because those are coarser physical observations.
 
-### `com.smellgate.description` — a community-authored description
+### `app.smellgate.description` — a community-authored description
 
 **Written by:** any user. Distinct from the canonical `perfume.description` (which is curator-authored).
 
-- `perfume` (strongRef to `com.smellgate.perfume`, required)
+- `perfume` (strongRef to `app.smellgate.perfume`, required)
 - `body` (string, required, min 1 / max ~5000 graphemes) — `minLength: 1` enforced in the lexicon, same rationale as `review.body`.
 - `createdAt` (datetime, required)
 
-### `com.smellgate.vote` — upvote/downvote on a description
+### `app.smellgate.vote` — upvote/downvote on a description
 
 **Written by:** any user.
 
-- `subject` (strongRef to `com.smellgate.description`, required)
+- `subject` (strongRef to `app.smellgate.description`, required)
 - `direction` (string enum: `"up"` | `"down"`, required)
 - `createdAt` (datetime, required)
 
 One vote per (user, description) is enforced at the **read layer**, not in the lexicon: the read cache keeps only the user's most recent vote per subject. This is fine because (a) ATProto can't enforce uniqueness across a user's records at write time, and (b) the cache is the source of truth for display.
 
-### `com.smellgate.comment` — reply on a review
+### `app.smellgate.comment` — reply on a review
 
 **Written by:** any user.
 
-- `subject` (strongRef to `com.smellgate.review`, required)
+- `subject` (strongRef to `app.smellgate.review`, required)
 - `body` (string, required, min 1 / max ~5000 graphemes) — `minLength: 1` enforced in the lexicon, same rationale as `review.body`.
 - `createdAt` (datetime, required)
 
@@ -146,9 +146,9 @@ Threading model: **flat**. Comments reply only to reviews, not to other comments
 When a user tries to add a perfume to their shelf (or review it, etc.) and the perfume doesn't exist in the catalog yet:
 
 1. The client walks them through a "submit a new perfume" form.
-2. The client writes a `com.smellgate.perfumeSubmission` to **their own PDS**.
+2. The client writes a `app.smellgate.perfumeSubmission` to **their own PDS**.
 3. The client **also** writes whatever the user originally wanted (shelfItem, review, etc.), but with the `perfume` strongRef pointing at the submission's AT-URI. These records are in a "pending" state from the app's perspective because the reference target is a submission rather than a canonical perfume.
-4. A curator reviews the submission. On approval, the curator account writes a `com.smellgate.perfume` record and a `com.smellgate.perfumeSubmissionResolution` linking the two.
+4. A curator reviews the submission. On approval, the curator account writes a `app.smellgate.perfume` record and a `app.smellgate.perfumeSubmissionResolution` linking the two.
 5. The client (or a backend rewriter) notices the resolution and rewrites the user's pending records to point at the canonical perfume AT-URI instead. This is a record edit, not a new record — the original `tid` and intent are preserved.
 6. On `"duplicate"` resolution, the same rewrite happens but to the existing canonical record the curator identified.
 7. On `"rejected"` resolution, the client prompts the user and offers to either edit the submission or delete the pending records.

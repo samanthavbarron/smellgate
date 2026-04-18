@@ -1,5 +1,5 @@
 /**
- * OAuth-gated server-action implementations for `com.smellgate.*` writes
+ * OAuth-gated server-action implementations for `app.smellgate.*` writes
  * (issue #54 / Phase 3.B).
  *
  * Each function takes:
@@ -36,7 +36,7 @@ import { Client, type l } from "@atproto/lex";
 import type { OAuthSession } from "@atproto/oauth-client-node";
 import { AtUri } from "@atproto/syntax";
 import type { Kysely } from "kysely";
-import * as com from "../lexicons/com";
+import * as app from "../lexicons/app";
 import {
   getPerfumeByUri,
   getResolutionForSubmission,
@@ -48,7 +48,7 @@ import { normalizeNotes, sanitizeFreeText } from "./write-guards";
 type Db = Kysely<DatabaseSchema>;
 
 /**
- * The lexicons in `lib/lexicons/com/smellgate/*.defs.ts` use branded
+ * The lexicons in `lib/lexicons/app/smellgate/*.defs.ts` use branded
  * types (`l.AtUriString`, `l.DatetimeString`, `l.CidString`) on
  * format-typed fields. Plain `string`s coming from request bodies and
  * cache rows do not satisfy those brands, so we cast at the boundary.
@@ -341,7 +341,7 @@ async function requirePerfumeInCache(
 const MAX_BOTTLE_SIZE_ML = 1000;
 
 /**
- * Write a `com.smellgate.shelfItem` record to the user's PDS.
+ * Write a `app.smellgate.shelfItem` record to the user's PDS.
  *
  * Validation:
  * - `perfumeUri` must resolve to a known perfume in the cache.
@@ -376,7 +376,7 @@ export async function addToShelfAction(
 
   const createdAt = nowDatetime();
   const lexClient = new Client(session);
-  const res = await lexClient.create(com.smellgate.shelfItem.main, {
+  const res = await lexClient.create(app.smellgate.shelfItem.main, {
     perfume: target,
     acquiredAt,
     bottleSizeMl,
@@ -396,7 +396,7 @@ export async function addToShelfAction(
 }
 
 /**
- * Write a `com.smellgate.review` record to the user's PDS.
+ * Write a `app.smellgate.review` record to the user's PDS.
  *
  * Validation:
  * - `perfumeUri` must resolve in the cache.
@@ -427,7 +427,7 @@ export async function postReviewAction(
 
   const createdAt = nowDatetime();
   const lexClient = new Client(session);
-  const res = await lexClient.create(com.smellgate.review.main, {
+  const res = await lexClient.create(app.smellgate.review.main, {
     perfume: target,
     rating,
     sillage,
@@ -449,7 +449,7 @@ export async function postReviewAction(
 }
 
 /**
- * Write a `com.smellgate.description` record to the user's PDS.
+ * Write a `app.smellgate.description` record to the user's PDS.
  *
  * Validation: `perfumeUri` must resolve, body non-empty, ≤ 5000
  * graphemes (counted with `Intl.Segmenter`; see `lib/graphemes.ts`).
@@ -470,7 +470,7 @@ export async function postDescriptionAction(
 
   const createdAt = nowDatetime();
   const lexClient = new Client(session);
-  const res = await lexClient.create(com.smellgate.description.main, {
+  const res = await lexClient.create(app.smellgate.description.main, {
     perfume: target,
     body,
     createdAt,
@@ -486,7 +486,7 @@ export async function postDescriptionAction(
 }
 
 /**
- * Write a `com.smellgate.vote` record to the user's PDS.
+ * Write a `app.smellgate.vote` record to the user's PDS.
  *
  * Validation: `descriptionUri` must resolve in the cache; `direction`
  * must be exactly `"up"` or `"down"`. The write is still add-only at
@@ -550,7 +550,7 @@ export async function voteOnDescriptionAction(
     const listUrl =
       `/xrpc/com.atproto.repo.listRecords` +
       `?repo=${encodeURIComponent(session.did)}` +
-      `&collection=com.smellgate.vote` +
+      `&collection=app.smellgate.vote` +
       `&limit=100`;
     const listRes = await session.fetchHandler(listUrl, { method: "GET" });
     if (listRes.ok) {
@@ -565,7 +565,7 @@ export async function voteOnDescriptionAction(
           const { rkey } = new AtUri(rec.uri);
           const delBody = {
             repo: session.did,
-            collection: "com.smellgate.vote",
+            collection: "app.smellgate.vote",
             rkey,
           };
           await session.fetchHandler(`/xrpc/com.atproto.repo.deleteRecord`, {
@@ -588,7 +588,7 @@ export async function voteOnDescriptionAction(
   }
 
   const createdAt = nowDatetime();
-  const res = await lexClient.create(com.smellgate.vote.main, {
+  const res = await lexClient.create(app.smellgate.vote.main, {
     subject: strongRef(subjectUri, cid),
     direction: input.direction,
     createdAt,
@@ -604,7 +604,7 @@ export async function voteOnDescriptionAction(
 }
 
 /**
- * Write a `com.smellgate.comment` record to the user's PDS.
+ * Write a `app.smellgate.comment` record to the user's PDS.
  *
  * Validation: `reviewUri` must resolve in the cache; body non-empty,
  * ≤ 5000 graphemes (counted with `Intl.Segmenter`; see
@@ -627,7 +627,7 @@ export async function commentOnReviewAction(
 
   const createdAt = nowDatetime();
   const lexClient = new Client(session);
-  const res = await lexClient.create(com.smellgate.comment.main, {
+  const res = await lexClient.create(app.smellgate.comment.main, {
     subject: strongRef(subjectUri, cid),
     body,
     createdAt,
@@ -643,7 +643,7 @@ export async function commentOnReviewAction(
 }
 
 /**
- * Write a `com.smellgate.perfumeSubmission` record to the user's PDS.
+ * Write a `app.smellgate.perfumeSubmission` record to the user's PDS.
  *
  * Any authenticated user may submit — there is NO curator gate here.
  * The submission lives in the user's own repo and is resolved later by
@@ -720,7 +720,7 @@ export async function submitPerfumeAction(
 
   // Issue #126: idempotent duplicate-submission guard. Before creating
   // a new submission, scan the user's own PDS for prior
-  // `com.smellgate.perfumeSubmission` records that case-fold to the
+  // `app.smellgate.perfumeSubmission` records that case-fold to the
   // same (name, house). If we find one, return it and mark the response
   // `idempotent: true` rather than writing a second pending record.
   //
@@ -739,7 +739,7 @@ export async function submitPerfumeAction(
     const listUrl =
       `/xrpc/com.atproto.repo.listRecords` +
       `?repo=${encodeURIComponent(session.did)}` +
-      `&collection=com.smellgate.perfumeSubmission` +
+      `&collection=app.smellgate.perfumeSubmission` +
       `&limit=100`;
     const listRes = await session.fetchHandler(listUrl, { method: "GET" });
     if (listRes.ok) {
@@ -836,7 +836,7 @@ export async function submitPerfumeAction(
   }
 
   const createdAt = nowDatetime();
-  const res = await lexClient.create(com.smellgate.perfumeSubmission.main, {
+  const res = await lexClient.create(app.smellgate.perfumeSubmission.main, {
     name,
     house,
     creator,
@@ -923,7 +923,7 @@ export function groupSubmissionsByState(
 }
 
 /**
- * List the authenticated user's own `com.smellgate.perfumeSubmission`
+ * List the authenticated user's own `app.smellgate.perfumeSubmission`
  * records (from their PDS), cross-referenced against the cached
  * resolution table to determine state. Issue #131.
  *
@@ -945,7 +945,7 @@ export async function listMySubmissionsAction(
   session: OAuthSession,
 ): Promise<MySubmissionItem[]> {
   const lexClient = new Client(session);
-  const res = await lexClient.list(com.smellgate.perfumeSubmission.main, {
+  const res = await lexClient.list(app.smellgate.perfumeSubmission.main, {
     limit: 100,
   });
 

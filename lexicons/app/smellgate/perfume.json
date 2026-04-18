@@ -1,0 +1,70 @@
+{
+  "id": "app.smellgate.perfume",
+  "description": "Canonical catalog entry for a perfume. Written by the smellgate curator account only; the app refuses to surface records authored by non-curator DIDs.",
+  "defs": {
+    "main": {
+      "type": "record",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": ["name", "house", "notes", "createdAt"],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "house": {
+            "type": "string",
+            "description": "The perfume house / brand (e.g. \"Guerlain\")."
+          },
+          "creator": {
+            "type": "string",
+            "description": "The perfumer / nose, when known (e.g. \"Jacques Guerlain\")."
+          },
+          "releaseYear": {
+            "type": "integer"
+          },
+          "notes": {
+            "type": "array",
+            "minLength": 1,
+            "description": "Free-form tag strings. Normalized lowercase. The tag namespace is deliberately flat in v1.",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "description": {
+            "type": "string",
+            "description": "Curator-authored canonical blurb, distinct from community description records."
+          },
+          "externalRefs": {
+            "type": "array",
+            "description": "Future-proofing for linking out. Do not use as a primary key.",
+            "items": {
+              "type": "ref",
+              "ref": "#externalRef"
+            }
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime"
+          }
+        }
+      }
+    },
+    "externalRef": {
+      "type": "object",
+      "required": ["source", "url"],
+      "properties": {
+        "source": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string",
+          "format": "uri"
+        }
+      }
+    }
+  },
+  "$type": "com.atproto.lexicon.schema",
+  "lexicon": 1
+}

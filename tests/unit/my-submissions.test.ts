@@ -20,7 +20,7 @@ function makeItem(
   overrides: Partial<MySubmissionItem> & Pick<MySubmissionItem, "state">,
 ): MySubmissionItem {
   const base: MySubmissionItem = {
-    uri: `at://did:plc:test/com.smellgate.perfumeSubmission/${Math.random()
+    uri: `at://did:plc:test/app.smellgate.perfumeSubmission/${Math.random()
       .toString(36)
       .slice(2, 10)}`,
     state: overrides.state,

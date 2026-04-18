@@ -47,7 +47,7 @@ const migrations: Record<string, Migration> = {
       await db.schema.dropTable("auth_state").execute();
     },
   },
-  // Additive: create the com.smellgate.* read-cache tables. Leaves the
+  // Additive: create the app.smellgate.* read-cache tables. Leaves the
   // existing xyz.statusphere.status plumbing alone.
   "002_smellgate_cache": {
     async up(db: Kysely<unknown>) {

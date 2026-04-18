@@ -1,0 +1,48 @@
+{
+  "id": "app.smellgate.review",
+  "description": "A user's review of a perfume: overall rating (1-10), sillage (1-5), longevity (1-5), and free-form body text.",
+  "defs": {
+    "main": {
+      "type": "record",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": ["perfume", "rating", "sillage", "longevity", "body", "createdAt"],
+        "properties": {
+          "perfume": {
+            "type": "ref",
+            "ref": "com.atproto.repo.strongRef",
+            "description": "StrongRef to the app.smellgate.perfume record this review is about."
+          },
+          "rating": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10,
+            "description": "Overall rating on a 1-10 scale."
+          },
+          "sillage": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5
+          },
+          "longevity": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5
+          },
+          "body": {
+            "type": "string",
+            "minLength": 1,
+            "maxGraphemes": 15000
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime"
+          }
+        }
+      }
+    }
+  },
+  "$type": "com.atproto.lexicon.schema",
+  "lexicon": 1
+}

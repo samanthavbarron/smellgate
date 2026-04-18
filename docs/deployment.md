@@ -39,8 +39,8 @@ Optional:
 
 ## DNS
 
-- `_lexicon.smellgate.com` TXT record, value `did=<curator DID>`, is required before publishing any canonical `com.smellgate.*` lexicons. See [docs/lexicons.md](./lexicons.md) under "Lexicon authority publication" and issue #102.
-- Once a custom apex (e.g. `smellgate.com`) is pointed at Fly, update `PUBLIC_URL` to the custom domain and redeploy. OAuth client metadata is keyed off `PUBLIC_URL`, so changing it mid-session will invalidate existing OAuth sessions until clients refresh.
+- `_lexicon.smellgate.app` TXT record, value `did=did:plc:l6l3piyd3hywg76f2udorm53`, is already set (confirmed via DNS-over-HTTPS). This declares the authority for `app.smellgate.*` lexicons. See [docs/lexicons.md](./lexicons.md) under "Lexicon authority publication".
+- Once a custom apex (e.g. `smellgate.app`) is pointed at Fly, update `PUBLIC_URL` to the custom domain and redeploy. OAuth client metadata is keyed off `PUBLIC_URL`, so changing it mid-session will invalidate existing OAuth sessions until clients refresh.
 
 ## Deploy workflow
 

@@ -429,15 +429,15 @@ async function seedCanonicalPerfume(
 ): Promise<string> {
   const rkey = nextRkey();
   const record = {
-    $type: "com.smellgate.perfume",
+    $type: "app.smellgate.perfume",
     name,
     house: "House",
     notes: ["test"],
     createdAt: nowIso(),
   };
-  const evt = makeEvent("com.smellgate.perfume", curatorDid, rkey, record);
+  const evt = makeEvent("app.smellgate.perfume", curatorDid, rkey, record);
   await env.tap.dispatchSmellgateEvent(env.db.getDb(), evt);
-  return `at://${curatorDid}/com.smellgate.perfume/${rkey}`;
+  return `at://${curatorDid}/app.smellgate.perfume/${rkey}`;
 }
 
 // -----------------------------------------------------------------------------
@@ -516,7 +516,7 @@ describe("smellgate submission + curator flow (Phase 3.C)", () => {
       },
     );
     expect(result.uri).toMatch(
-      new RegExp(`^at://${alice.did}/com\\.smellgate\\.perfumeSubmission/`),
+      new RegExp(`^at://${alice.did}/app\\.smellgate\\.perfumeSubmission/`),
     );
 
     // Round-trip on the PDS.
@@ -528,7 +528,7 @@ describe("smellgate submission + curator flow (Phase 3.C)", () => {
       notes: string[];
       rationale?: string;
     };
-    expect(value.$type).toBe("com.smellgate.perfumeSubmission");
+    expect(value.$type).toBe("app.smellgate.perfumeSubmission");
     expect(value.name).toBe("Test Eau");
     // Notes normalized: lowercase, trimmed, deduped.
     expect(value.notes).toEqual(["rose", "jasmine"]);
@@ -557,7 +557,7 @@ describe("smellgate submission + curator flow (Phase 3.C)", () => {
     });
     const subFetched = await getRecord(aliceSession, sub.uri);
     await indexRecordIntoCache(env, sub.uri, subFetched.cid, {
-      $type: "com.smellgate.perfumeSubmission",
+      $type: "app.smellgate.perfumeSubmission",
       ...subFetched.value,
     });
 
@@ -568,16 +568,16 @@ describe("smellgate submission + curator flow (Phase 3.C)", () => {
       { submissionUri: sub.uri },
     );
     expect(perfumeUri).toMatch(
-      new RegExp(`^at://${bob.did}/com\\.smellgate\\.perfume/`),
+      new RegExp(`^at://${bob.did}/app\\.smellgate\\.perfume/`),
     );
     expect(resolutionUri).toMatch(
-      new RegExp(`^at://${bob.did}/com\\.smellgate\\.perfumeSubmissionResolution/`),
+      new RegExp(`^at://${bob.did}/app\\.smellgate\\.perfumeSubmissionResolution/`),
     );
 
     // Records exist on bob's PDS.
     const perfumeRecord = await getRecord(bobSession, perfumeUri);
     expect((perfumeRecord.value as { $type: string }).$type).toBe(
-      "com.smellgate.perfume",
+      "app.smellgate.perfume",
     );
     expect((perfumeRecord.value as { name: string }).name).toBe("Approvable");
     const resolutionRecord = await getRecord(bobSession, resolutionUri);
@@ -587,18 +587,18 @@ describe("smellgate submission + curator flow (Phase 3.C)", () => {
       submission: { uri: string };
       perfume?: { uri: string };
     };
-    expect(rv.$type).toBe("com.smellgate.perfumeSubmissionResolution");
+    expect(rv.$type).toBe("app.smellgate.perfumeSubmissionResolution");
     expect(rv.decision).toBe("approved");
     expect(rv.submission.uri).toBe(sub.uri);
     expect(rv.perfume?.uri).toBe(perfumeUri);
 
     // Index both into cache and confirm the query layer sees them.
     await indexRecordIntoCache(env, perfumeUri, perfumeRecord.cid, {
-      $type: "com.smellgate.perfume",
+      $type: "app.smellgate.perfume",
       ...perfumeRecord.value,
     });
     await indexRecordIntoCache(env, resolutionUri, resolutionRecord.cid, {
-      $type: "com.smellgate.perfumeSubmissionResolution",
+      $type: "app.smellgate.perfumeSubmissionResolution",
       ...resolutionRecord.value,
     });
     const cached = await env.queries.getPerfumeByUri(env.db.getDb(), perfumeUri);
@@ -623,7 +623,7 @@ describe("smellgate submission + curator flow (Phase 3.C)", () => {
     });
     const subFetched = await getRecord(aliceSession, sub.uri);
     await indexRecordIntoCache(env, sub.uri, subFetched.cid, {
-      $type: "com.smellgate.perfumeSubmission",
+      $type: "app.smellgate.perfumeSubmission",
       ...subFetched.value,
     });
 
@@ -646,7 +646,7 @@ describe("smellgate submission + curator flow (Phase 3.C)", () => {
     // No canonical perfume should have been created on bob's PDS for
     // this submission.
     const listRes = await bobSession.fetchHandler(
-      `/xrpc/com.atproto.repo.listRecords?repo=${encodeURIComponent(bob.did)}&collection=com.smellgate.perfume&limit=100`,
+      `/xrpc/com.atproto.repo.listRecords?repo=${encodeURIComponent(bob.did)}&collection=app.smellgate.perfume&limit=100`,
       { method: "GET" },
     );
     const listBody = (await listRes.json()) as { records: { value: { name?: string } }[] };
@@ -671,7 +671,7 @@ describe("smellgate submission + curator flow (Phase 3.C)", () => {
     });
     const subFetched = await getRecord(aliceSession, sub.uri);
     await indexRecordIntoCache(env, sub.uri, subFetched.cid, {
-      $type: "com.smellgate.perfumeSubmission",
+      $type: "app.smellgate.perfumeSubmission",
       ...subFetched.value,
     });
 
@@ -703,7 +703,7 @@ describe("smellgate submission + curator flow (Phase 3.C)", () => {
     });
     const subFetched = await getRecord(aliceSession, sub.uri);
     await indexRecordIntoCache(env, sub.uri, subFetched.cid, {
-      $type: "com.smellgate.perfumeSubmission",
+      $type: "app.smellgate.perfumeSubmission",
       ...subFetched.value,
     });
 
@@ -713,7 +713,7 @@ describe("smellgate submission + curator flow (Phase 3.C)", () => {
     const reviewBody = "First impressions: unique.";
     const reviewCreate = await createRecord(
       aliceSession,
-      "com.smellgate.review",
+      "app.smellgate.review",
       {
         perfume: { uri: sub.uri, cid: subFetched.cid },
         rating: 7,
@@ -725,7 +725,7 @@ describe("smellgate submission + curator flow (Phase 3.C)", () => {
     );
     // Feed the pending review into the cache.
     await indexRecordIntoCache(env, reviewCreate.uri, reviewCreate.cid, {
-      $type: "com.smellgate.review",
+      $type: "app.smellgate.review",
       perfume: { uri: sub.uri, cid: subFetched.cid },
       rating: 7,
       sillage: 3,
@@ -742,7 +742,7 @@ describe("smellgate submission + curator flow (Phase 3.C)", () => {
     );
     const perfumeRec = await getRecord(bobSession, perfumeUri);
     await indexRecordIntoCache(env, perfumeUri, perfumeRec.cid, {
-      $type: "com.smellgate.perfume",
+      $type: "app.smellgate.perfume",
       ...perfumeRec.value,
     });
     // And the resolution.
@@ -753,7 +753,7 @@ describe("smellgate submission + curator flow (Phase 3.C)", () => {
     // the curator's PDS but the dispatcher hasn't seen the resolution.
     // Fetch it off the curator's PDS and feed it in.
     const listRes = await bobSession.fetchHandler(
-      `/xrpc/com.atproto.repo.listRecords?repo=${encodeURIComponent(bob.did)}&collection=com.smellgate.perfumeSubmissionResolution&limit=100`,
+      `/xrpc/com.atproto.repo.listRecords?repo=${encodeURIComponent(bob.did)}&collection=app.smellgate.perfumeSubmissionResolution&limit=100`,
       { method: "GET" },
     );
     const listBody = (await listRes.json()) as {
@@ -794,7 +794,7 @@ describe("smellgate submission + curator flow (Phase 3.C)", () => {
       body: string;
       rating: number;
     };
-    expect(uv.$type).toBe("com.smellgate.review");
+    expect(uv.$type).toBe("app.smellgate.review");
     expect(uv.perfume.uri).toBe(perfumeUri);
     expect(uv.perfume.uri).not.toBe(sub.uri);
     // CID assertion (issue #60): the rewritten strongRef must point at
@@ -811,7 +811,7 @@ describe("smellgate submission + curator flow (Phase 3.C)", () => {
     // would) and check the cache row now points at the canonical
     // perfume too.
     await indexRecordIntoCache(env, reviewCreate.uri, updatedReview.cid, {
-      $type: "com.smellgate.review",
+      $type: "app.smellgate.review",
       ...updatedReview.value,
     });
     const reviewRow = await env.db
@@ -842,14 +842,14 @@ describe("smellgate submission + curator flow (Phase 3.C)", () => {
     });
     const subFetched = await getRecord(aliceSession, sub.uri);
     await indexRecordIntoCache(env, sub.uri, subFetched.cid, {
-      $type: "com.smellgate.perfumeSubmission",
+      $type: "app.smellgate.perfumeSubmission",
       ...subFetched.value,
     });
 
     // Alice writes a pending shelfItem.
     const shelfCreate = await createRecord(
       aliceSession,
-      "com.smellgate.shelfItem",
+      "app.smellgate.shelfItem",
       {
         perfume: { uri: sub.uri, cid: subFetched.cid },
         bottleSizeMl: 50,
@@ -858,7 +858,7 @@ describe("smellgate submission + curator flow (Phase 3.C)", () => {
       },
     );
     await indexRecordIntoCache(env, shelfCreate.uri, shelfCreate.cid, {
-      $type: "com.smellgate.shelfItem",
+      $type: "app.smellgate.shelfItem",
       perfume: { uri: sub.uri, cid: subFetched.cid },
       bottleSizeMl: 50,
       isDecant: true,
@@ -873,7 +873,7 @@ describe("smellgate submission + curator flow (Phase 3.C)", () => {
     );
     const resolutionRec = await getRecord(bobSession, resolutionUri);
     await indexRecordIntoCache(env, resolutionUri, resolutionRec.cid, {
-      $type: "com.smellgate.perfumeSubmissionResolution",
+      $type: "app.smellgate.perfumeSubmissionResolution",
       ...resolutionRec.value,
     });
 
@@ -892,7 +892,7 @@ describe("smellgate submission + curator flow (Phase 3.C)", () => {
       bottleSizeMl?: number;
       isDecant?: boolean;
     };
-    expect(sv.$type).toBe("com.smellgate.shelfItem");
+    expect(sv.$type).toBe("app.smellgate.shelfItem");
     expect(sv.perfume.uri).toBe(canonicalUri);
     // CID assertion (issue #60): the rewritten strongRef must carry the
     // canonical perfume's CID, sourced from the cache row populated by
@@ -915,7 +915,7 @@ describe("smellgate submission + curator flow (Phase 3.C)", () => {
     });
     const subFetched = await getRecord(aliceSession, sub.uri);
     await indexRecordIntoCache(env, sub.uri, subFetched.cid, {
-      $type: "com.smellgate.perfumeSubmission",
+      $type: "app.smellgate.perfumeSubmission",
       ...subFetched.value,
     });
 
@@ -923,7 +923,7 @@ describe("smellgate submission + curator flow (Phase 3.C)", () => {
     const body = "This smells unfinished.";
     const descCreate = await createRecord(
       aliceSession,
-      "com.smellgate.description",
+      "app.smellgate.description",
       {
         perfume: { uri: sub.uri, cid: subFetched.cid },
         body,
@@ -931,7 +931,7 @@ describe("smellgate submission + curator flow (Phase 3.C)", () => {
       },
     );
     await indexRecordIntoCache(env, descCreate.uri, descCreate.cid, {
-      $type: "com.smellgate.description",
+      $type: "app.smellgate.description",
       perfume: { uri: sub.uri, cid: subFetched.cid },
       body,
       createdAt: nowIso(),
@@ -945,7 +945,7 @@ describe("smellgate submission + curator flow (Phase 3.C)", () => {
     );
     const resolutionRec = await getRecord(bobSession, resolutionUri);
     await indexRecordIntoCache(env, resolutionUri, resolutionRec.cid, {
-      $type: "com.smellgate.perfumeSubmissionResolution",
+      $type: "app.smellgate.perfumeSubmissionResolution",
       ...resolutionRec.value,
     });
 
@@ -976,7 +976,7 @@ describe("smellgate submission + curator flow (Phase 3.C)", () => {
     });
     const subFetched = await getRecord(aliceSession, sub.uri);
     await indexRecordIntoCache(env, sub.uri, subFetched.cid, {
-      $type: "com.smellgate.perfumeSubmission",
+      $type: "app.smellgate.perfumeSubmission",
       ...subFetched.value,
     });
 
@@ -996,7 +996,7 @@ describe("smellgate submission + curator flow (Phase 3.C)", () => {
     await expect(
       env.curator.markDuplicateAction(env.db.getDb(), aliceSession, {
         submissionUri: sub.uri,
-        canonicalPerfumeUri: "at://did:plc:x/com.smellgate.perfume/x",
+        canonicalPerfumeUri: "at://did:plc:x/app.smellgate.perfume/x",
       }),
     ).rejects.toMatchObject({ name: "ActionError", status: 403 });
 
@@ -1041,7 +1041,7 @@ describe("smellgate submission + curator flow (Phase 3.C)", () => {
     });
     const subFetched = await getRecord(aliceSession, sub.uri);
     await indexRecordIntoCache(env, sub.uri, subFetched.cid, {
-      $type: "com.smellgate.perfumeSubmission",
+      $type: "app.smellgate.perfumeSubmission",
       ...subFetched.value,
     });
 
@@ -1055,7 +1055,7 @@ describe("smellgate submission + curator flow (Phase 3.C)", () => {
     // can see it — this mirrors the production firehose landing the
     // first resolution before the second click arrives.
     const listRes = await bobSession.fetchHandler(
-      `/xrpc/com.atproto.repo.listRecords?repo=${encodeURIComponent(bob.did)}&collection=com.smellgate.perfumeSubmissionResolution&limit=100`,
+      `/xrpc/com.atproto.repo.listRecords?repo=${encodeURIComponent(bob.did)}&collection=app.smellgate.perfumeSubmissionResolution&limit=100`,
       { method: "GET" },
     );
     const listBody = (await listRes.json()) as {
@@ -1082,7 +1082,7 @@ describe("smellgate submission + curator flow (Phase 3.C)", () => {
     // Sanity: only one canonical perfume named "Double Approve" on
     // bob's PDS (the first approve's).
     const perfumeListRes = await bobSession.fetchHandler(
-      `/xrpc/com.atproto.repo.listRecords?repo=${encodeURIComponent(bob.did)}&collection=com.smellgate.perfume&limit=100`,
+      `/xrpc/com.atproto.repo.listRecords?repo=${encodeURIComponent(bob.did)}&collection=app.smellgate.perfume&limit=100`,
       { method: "GET" },
     );
     const perfumeListBody = (await perfumeListRes.json()) as {
@@ -1103,7 +1103,7 @@ describe("smellgate submission + curator flow (Phase 3.C)", () => {
     });
     const subFetched = await getRecord(aliceSession, sub.uri);
     await indexRecordIntoCache(env, sub.uri, subFetched.cid, {
-      $type: "com.smellgate.perfumeSubmission",
+      $type: "app.smellgate.perfumeSubmission",
       ...subFetched.value,
     });
 
@@ -1113,7 +1113,7 @@ describe("smellgate submission + curator flow (Phase 3.C)", () => {
     });
     // Feed the resolution through the dispatcher.
     const listRes = await bobSession.fetchHandler(
-      `/xrpc/com.atproto.repo.listRecords?repo=${encodeURIComponent(bob.did)}&collection=com.smellgate.perfumeSubmissionResolution&limit=100`,
+      `/xrpc/com.atproto.repo.listRecords?repo=${encodeURIComponent(bob.did)}&collection=app.smellgate.perfumeSubmissionResolution&limit=100`,
       { method: "GET" },
     );
     const listBody = (await listRes.json()) as {
@@ -1144,7 +1144,7 @@ describe("smellgate submission + curator flow (Phase 3.C)", () => {
     });
     const subFetched = await getRecord(aliceSession, sub.uri);
     await indexRecordIntoCache(env, sub.uri, subFetched.cid, {
-      $type: "com.smellgate.perfumeSubmission",
+      $type: "app.smellgate.perfumeSubmission",
       ...subFetched.value,
     });
 
@@ -1154,7 +1154,7 @@ describe("smellgate submission + curator flow (Phase 3.C)", () => {
       note: "spam",
     });
     const listRes = await bobSession.fetchHandler(
-      `/xrpc/com.atproto.repo.listRecords?repo=${encodeURIComponent(bob.did)}&collection=com.smellgate.perfumeSubmissionResolution&limit=100`,
+      `/xrpc/com.atproto.repo.listRecords?repo=${encodeURIComponent(bob.did)}&collection=app.smellgate.perfumeSubmissionResolution&limit=100`,
       { method: "GET" },
     );
     const listBody = (await listRes.json()) as {
@@ -1184,7 +1184,7 @@ describe("smellgate submission + curator flow (Phase 3.C)", () => {
     });
     const subFetched = await getRecord(aliceSession, sub.uri);
     await indexRecordIntoCache(env, sub.uri, subFetched.cid, {
-      $type: "com.smellgate.perfumeSubmission",
+      $type: "app.smellgate.perfumeSubmission",
       ...subFetched.value,
     });
 
@@ -1192,7 +1192,7 @@ describe("smellgate submission + curator flow (Phase 3.C)", () => {
     const reviewBody = "Alice's pending take.";
     const reviewCreate = await createRecord(
       aliceSession,
-      "com.smellgate.review",
+      "app.smellgate.review",
       {
         perfume: { uri: sub.uri, cid: subFetched.cid },
         rating: 6,
@@ -1203,7 +1203,7 @@ describe("smellgate submission + curator flow (Phase 3.C)", () => {
       },
     );
     await indexRecordIntoCache(env, reviewCreate.uri, reviewCreate.cid, {
-      $type: "com.smellgate.review",
+      $type: "app.smellgate.review",
       perfume: { uri: sub.uri, cid: subFetched.cid },
       rating: 6,
       sillage: 2,
@@ -1220,13 +1220,13 @@ describe("smellgate submission + curator flow (Phase 3.C)", () => {
     );
     const perfumeRec = await getRecord(bobSession, perfumeUri);
     await indexRecordIntoCache(env, perfumeUri, perfumeRec.cid, {
-      $type: "com.smellgate.perfume",
+      $type: "app.smellgate.perfume",
       ...perfumeRec.value,
     });
     // Pull the resolution off the curator's PDS and feed it into the
     // cache so the rewrite query can see it.
     const listRes = await bobSession.fetchHandler(
-      `/xrpc/com.atproto.repo.listRecords?repo=${encodeURIComponent(bob.did)}&collection=com.smellgate.perfumeSubmissionResolution&limit=100`,
+      `/xrpc/com.atproto.repo.listRecords?repo=${encodeURIComponent(bob.did)}&collection=app.smellgate.perfumeSubmissionResolution&limit=100`,
       { method: "GET" },
     );
     const listBody = (await listRes.json()) as {

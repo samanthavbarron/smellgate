@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
     const { session } = await client.callback(params);
 
     // Phase 3.C rewrite mechanic: once we have a usable OAuth session,
-    // check whether this user has any pending `com.smellgate.*` records
+    // check whether this user has any pending `app.smellgate.*` records
     // whose submission has been resolved since the last login, and
     // rewrite their strongRefs to the canonical perfume in place on
     // their PDS. See `lib/server/smellgate-curator-actions.ts` and

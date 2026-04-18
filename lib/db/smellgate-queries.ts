@@ -1,5 +1,5 @@
 /**
- * Kysely query layer for the `com.smellgate.*` read cache (Phase 2.B).
+ * Kysely query layer for the `app.smellgate.*` read cache (Phase 2.B).
  *
  * These functions read from the tables populated by
  * `lib/tap/smellgate.ts`. Every query takes an explicit
@@ -755,8 +755,8 @@ export async function getPerfumeSubmissionByUri(
 // A user record (shelf_item / review / description) is "pending" when
 // its `perfume_uri` does not resolve to a canonical perfume row but
 // DOES resolve to a submission row — i.e. the author wrote a record
-// pointing at a `com.smellgate.perfumeSubmission` URI rather than a
-// `com.smellgate.perfume` URI, per docs/lexicons.md §"The submission →
+// pointing at a `app.smellgate.perfumeSubmission` URI rather than a
+// `app.smellgate.perfume` URI, per docs/lexicons.md §"The submission →
 // canonical flow" step 3.
 //
 // Pending status is computed on the fly (no schema change) by joining

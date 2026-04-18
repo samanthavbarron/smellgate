@@ -9,14 +9,14 @@
  *
  *   pnpm agent:as alice whoami
  *   pnpm agent:as alice home
- *   pnpm agent:as alice perfume at://did:plc:.../com.smellgate.perfume/abc
+ *   pnpm agent:as alice perfume at://did:plc:.../app.smellgate.perfume/abc
  *   pnpm agent:as alice shelf add at://... --bottle-size 50 --decant
  *   pnpm agent:as alice shelf list
  *   pnpm agent:as alice review write at://... --rating 4 --sillage 3 \
  *     --longevity 4 --body "great juice"
  *   pnpm agent:as alice description write at://... --body "smells like..."
- *   pnpm agent:as alice vote at://.../com.smellgate.description/... up
- *   pnpm agent:as alice comment at://.../com.smellgate.review/... \
+ *   pnpm agent:as alice vote at://.../app.smellgate.description/... up
+ *   pnpm agent:as alice comment at://.../app.smellgate.review/... \
  *     --body "agreed!"
  *   pnpm agent:as alice submit '{"name":"X","house":"Y","notes":["a","b"]}'
  *   pnpm agent:as alice submissions list

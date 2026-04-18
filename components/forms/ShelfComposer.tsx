@@ -3,7 +3,7 @@
 /**
  * Shelf composer (Phase 4.D, issue #69).
  *
- * Writes a `com.smellgate.shelfItem` record for the target perfume
+ * Writes a `app.smellgate.shelfItem` record for the target perfume
  * via `/api/smellgate/shelf`, then redirects to `/profile/me`. See
  * CommentComposer header for the "client component + fetch"
  * rationale.

@@ -1,0 +1,31 @@
+{
+  "id": "app.smellgate.vote",
+  "description": "An upvote or downvote on a app.smellgate.description. Uniqueness per (user, description) is enforced at the read layer, not by the lexicon.",
+  "defs": {
+    "main": {
+      "type": "record",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": ["subject", "direction", "createdAt"],
+        "properties": {
+          "subject": {
+            "type": "ref",
+            "ref": "com.atproto.repo.strongRef",
+            "description": "StrongRef to the app.smellgate.description this vote applies to."
+          },
+          "direction": {
+            "type": "string",
+            "knownValues": ["up", "down"]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime"
+          }
+        }
+      }
+    }
+  },
+  "$type": "com.atproto.lexicon.schema",
+  "lexicon": 1
+}
