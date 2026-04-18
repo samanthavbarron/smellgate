@@ -10,6 +10,13 @@ import path from "node:path";
  * that's a follow-up once the reports from real traffic show what the
  * baseline actually needs.
  *
+ * Violation reports are POSTed to `/api/csp-report` (both the legacy
+ * `report-uri` directive and the newer Reporting-API `report-to` group
+ * named `csp-endpoint`, declared via the top-level `Report-To` header).
+ * Without a sink, Report-Only is nearly useless — browsers would log
+ * violations to devtools and nothing else. With the sink, we get the
+ * baseline in Fly logs that lets us safely tighten to enforce mode.
+ *
  * The current policy:
  *   - `default-src 'self'`
  *   - `script-src 'self' 'unsafe-inline'` — required for Next.js's
@@ -30,7 +37,19 @@ const cspReportOnly = [
   "img-src 'self' data:",
   "connect-src 'self' https://bsky.social https://plc.directory",
   "frame-ancestors 'none'",
+  "report-uri /api/csp-report",
+  "report-to csp-endpoint",
 ].join("; ");
+
+// Reporting-API group declaration. Names the `csp-endpoint` group
+// referenced by the `report-to` CSP directive above. The 10886400s
+// (126 days) max_age mirrors the value in the Reporting-API spec
+// examples.
+const reportToHeader = JSON.stringify({
+  group: "csp-endpoint",
+  max_age: 10886400,
+  endpoints: [{ url: "/api/csp-report" }],
+});
 
 const nextConfig: NextConfig = {
   // Emit a minimal self-contained server bundle at `.next/standalone` so the
@@ -68,6 +87,7 @@ const nextConfig: NextConfig = {
             key: "Content-Security-Policy-Report-Only",
             value: cspReportOnly,
           },
+          { key: "Report-To", value: reportToHeader },
         ],
       },
     ];
