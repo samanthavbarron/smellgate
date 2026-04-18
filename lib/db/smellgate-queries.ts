@@ -202,6 +202,19 @@ export async function getPerfumeByUri(
  * the author-controlled `created_at` — is the right ordering: it
  * reflects when our cache learned about the record, which is what the
  * "recent" section actually means to a visitor.
+ *
+ * Also powers the `/perfumes` browse-all page (issue #122) via the
+ * same ordering — that page just pages deeper with a larger `limit`
+ * and a non-zero `offset`.
+ *
+ * Secondary `uri DESC` sort is a stable tiebreaker. `indexed_at` is
+ * `Date.now()` (ms) and the bulk seeder in
+ * `scripts/seed-cache-from-fixtures.ts` easily lands multiple rows in
+ * the same millisecond. Without a total order the SQL engine is free
+ * to return ties in different orders across `LIMIT ... OFFSET 0` /
+ * `LIMIT ... OFFSET N` calls — which silently duplicates or skips
+ * rows across `?page=1` → `?page=2` on the browse-all page. `uri` is
+ * the primary key, so this makes the overall order total + stable.
  */
 export async function getRecentPerfumes(
   db: Db,
@@ -212,10 +225,27 @@ export async function getRecentPerfumes(
     .selectFrom("smellgate_perfume")
     .selectAll()
     .orderBy("indexed_at", "desc")
+    .orderBy("uri", "desc")
     .limit(limit)
     .offset(offset)
     .execute();
   return attachNotes(db, perfumes);
+}
+
+/**
+ * Total number of canonical perfume rows in the cache. Used by the
+ * `/perfumes` browse-all page (issue #122) to compute the page count
+ * for its pagination UI. Intentionally a separate query rather than
+ * piggy-backing on `getRecentPerfumes` — the callers that want a
+ * paginated slice usually don't care about the grand total, and we
+ * don't want to pay for a `COUNT(*)` on every home-page render.
+ */
+export async function countPerfumes(db: Db): Promise<number> {
+  const row = await db
+    .selectFrom("smellgate_perfume")
+    .select((eb) => eb.fn.countAll<number>().as("count"))
+    .executeTakeFirstOrThrow();
+  return Number(row.count);
 }
 
 /**
