@@ -15,6 +15,7 @@ export function PerfumeTile({ perfume }: { perfume: PerfumeWithNotes }) {
   return (
     <Link
       href={href}
+      data-smellgate-perfume={perfume.uri}
       className="block h-full rounded-lg border border-zinc-200 bg-white p-4 transition-colors hover:border-amber-600 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-amber-500"
     >
       <div className="text-base font-medium text-zinc-900 dark:text-zinc-100">

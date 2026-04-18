@@ -497,58 +497,177 @@ function str(flags: Flags, name: string, required = false): string | undefined {
 // ---------------------------------------------------------------------------
 // Page summarizers (HTML scraping for the read-side actions)
 // ---------------------------------------------------------------------------
+//
+// These parsers rely on `data-smellgate-*` markers emitted by the
+// render paths: each card's outermost element gets a
+// `data-smellgate-<kind>` attribute whose value is the record's AT-URI.
+// Previously the CLI counted occurrences of `data-smellgate-review` /
+// `-description`, but no page actually emitted those markers — see
+// issue #117. Now we extract URIs and small summaries so the agent
+// output is structurally meaningful, not just a zero-count.
 
-function countMatches(re: RegExp, text: string): number {
-  let c = 0;
-  while (re.exec(text) != null) c++;
-  return c;
-}
-
-function summarizeHome(html: string): {
-  perfumeCount: number;
-  reviewCount: number;
-} {
-  // Each home tile uses a link to /perfume/<encoded uri>; reviews link
-  // to /review/<encoded uri>. Count distinct hrefs.
-  const perfumes = new Set<string>();
-  const reviews = new Set<string>();
-  const hrefRe = /href="([^"]+)"/g;
+// Walk an HTML string and yield each element tagged with the given
+// `data-*` attribute. For each hit, we return the attribute value (the
+// AT-URI) and the element's innerHTML up to its matching close tag.
+// Not a real HTML parser — just bracket-matched slicing with same-tag
+// nesting depth tracking. That's adequate for our server-rendered
+// React cards, which don't nest the same marker inside themselves.
+function* extractMarkedElements(
+  html: string,
+  attrName: string,
+): Generator<{ uri: string; inner: string }> {
+  // Attribute values are always double-quoted by React.
+  const re = new RegExp(
+    `<([a-zA-Z]+)(?=\\s)[^>]*\\s${attrName}="([^"]*)"[^>]*>`,
+    "g",
+  );
   let m: RegExpExecArray | null;
-  while ((m = hrefRe.exec(html)) != null) {
-    const href = m[1];
-    if (href.startsWith("/perfume/")) perfumes.add(href);
-    else if (href.startsWith("/review/")) reviews.add(href);
+  while ((m = re.exec(html)) != null) {
+    const tag = m[1];
+    const uri = decodeHtml(m[2]);
+    const start = m.index + m[0].length;
+    const openRe = new RegExp(`<${tag}(?:\\s[^>]*)?>`, "g");
+    const closeRe = new RegExp(`</${tag}>`, "g");
+    let depth = 1;
+    let cursor = start;
+    let innerEnd = -1;
+    while (depth > 0) {
+      openRe.lastIndex = cursor;
+      closeRe.lastIndex = cursor;
+      const nextOpen = openRe.exec(html);
+      const nextClose = closeRe.exec(html);
+      if (!nextClose) break;
+      if (nextOpen && nextOpen.index < nextClose.index) {
+        depth++;
+        cursor = nextOpen.index + nextOpen[0].length;
+      } else {
+        depth--;
+        cursor = nextClose.index + nextClose[0].length;
+        if (depth === 0) {
+          innerEnd = nextClose.index;
+          break;
+        }
+      }
+    }
+    if (innerEnd >= 0) {
+      yield { uri, inner: html.slice(start, innerEnd) };
+    }
   }
-  return { perfumeCount: perfumes.size, reviewCount: reviews.size };
 }
 
-function summarizePerfume(html: string): {
+function decodeHtml(s: string): string {
+  return s
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, n) =>
+      String.fromCharCode(parseInt(n, 16)),
+    );
+}
+
+// Strip tags and collapse whitespace to produce a plain-text snippet of
+// a card's `body`. Truncate to 120 chars.
+function snippet(inner: string, max = 120): string {
+  const text = decodeHtml(inner.replace(/<[^>]*>/g, " "))
+    .replace(/\s+/g, " ")
+    .trim();
+  return text.length > max ? `${text.slice(0, max).trimEnd()}…` : text;
+}
+
+function extractRating(inner: string): number | null {
+  // Both ReviewCard variants render `{rating}/10` in their header.
+  const m = /(\d+)\s*\/\s*10/.exec(
+    decodeHtml(inner.replace(/<[^>]*>/g, " ")),
+  );
+  return m ? Number(m[1]) : null;
+}
+
+export type HomeSummary = {
+  perfumes: string[];
+  reviews: { uri: string; rating: number | null; snippet: string }[];
+};
+
+export type PerfumeSummary = {
   notes: string[];
-  reviewCount: number;
-  descriptionCount: number;
-} {
+  reviews: { uri: string; rating: number | null; snippet: string }[];
+  descriptions: { uri: string; snippet: string }[];
+};
+
+export type ShelfSummary = {
+  items: { uri: string; perfumeUri: string | null }[];
+};
+
+function summarizeHome(html: string): HomeSummary {
+  const perfumes: string[] = [];
+  for (const el of extractMarkedElements(html, "data-smellgate-perfume")) {
+    perfumes.push(el.uri);
+  }
+  const reviews: HomeSummary["reviews"] = [];
+  for (const el of extractMarkedElements(html, "data-smellgate-review")) {
+    reviews.push({
+      uri: el.uri,
+      rating: extractRating(el.inner),
+      snippet: snippet(el.inner),
+    });
+  }
+  return { perfumes, reviews };
+}
+
+function summarizePerfume(html: string): PerfumeSummary {
   const notes: string[] = [];
   const noteRe = /href="\/tag\/note\/([^"]+)"/g;
   let m: RegExpExecArray | null;
   while ((m = noteRe.exec(html)) != null) {
     notes.push(decodeURIComponent(m[1]));
   }
+  const reviews: PerfumeSummary["reviews"] = [];
+  for (const el of extractMarkedElements(html, "data-smellgate-review")) {
+    reviews.push({
+      uri: el.uri,
+      rating: extractRating(el.inner),
+      snippet: snippet(el.inner),
+    });
+  }
+  const descriptions: PerfumeSummary["descriptions"] = [];
+  for (const el of extractMarkedElements(html, "data-smellgate-description")) {
+    descriptions.push({ uri: el.uri, snippet: snippet(el.inner) });
+  }
   return {
     notes: Array.from(new Set(notes)),
-    reviewCount: countMatches(/data-smellgate-review/g, html),
-    descriptionCount: countMatches(/data-smellgate-description/g, html),
+    reviews,
+    descriptions,
   };
 }
 
-function summarizeShelf(html: string): { items: string[] } {
-  const items: string[] = [];
-  const re = /href="\/perfume\/([^"]+)"/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(html)) != null) {
-    items.push(decodeURIComponent(m[1]));
+function summarizeShelf(html: string): ShelfSummary {
+  const items: ShelfSummary["items"] = [];
+  for (const el of extractMarkedElements(html, "data-smellgate-shelf-item")) {
+    const firstPerfume = extractMarkedElements(
+      el.inner,
+      "data-smellgate-perfume",
+    ).next();
+    items.push({
+      uri: el.uri,
+      perfumeUri:
+        !firstPerfume.done && firstPerfume.value
+          ? firstPerfume.value.uri
+          : null,
+    });
   }
-  return { items: Array.from(new Set(items)) };
+  return { items };
 }
+
+// Exposed for unit tests — these are pure functions over HTML strings.
+export const __parsers = {
+  extractMarkedElements,
+  snippet,
+  extractRating,
+  summarizeHome,
+  summarizePerfume,
+  summarizeShelf,
+};
 
 // ---------------------------------------------------------------------------
 // Action dispatch
@@ -774,10 +893,25 @@ async function main(): Promise<void> {
   await runAction(session, rest);
 }
 
-main().catch((err) => {
-  console.error(
-    "[agent] error:",
-    err instanceof Error ? err.message : String(err),
-  );
-  process.exit(1);
-});
+// Only run when invoked directly (e.g. `pnpm agent:as ...`). Tests
+// import this module for `__parsers` and must NOT trigger the OAuth
+// flow.
+function isEntryPoint(): boolean {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  try {
+    return import.meta.url === new URL(`file://${entry}`).href;
+  } catch {
+    return false;
+  }
+}
+
+if (isEntryPoint()) {
+  main().catch((err) => {
+    console.error(
+      "[agent] error:",
+      err instanceof Error ? err.message : String(err),
+    );
+    process.exit(1);
+  });
+}

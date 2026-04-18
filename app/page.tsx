@@ -133,6 +133,7 @@ function ReviewRow({ review }: { review: ReviewWithPerfume }) {
   return (
     <Link
       href={href}
+      data-smellgate-review={review.uri}
       className="block rounded-lg border border-zinc-200 bg-white p-4 transition-colors hover:border-amber-600 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-amber-500"
     >
       <div className="flex items-baseline justify-between gap-4">
