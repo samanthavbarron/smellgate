@@ -56,22 +56,43 @@ const EDGE_EMOJI_RE =
   /^[\p{Extended_Pictographic}\uFE0F\u200D\s]+|[\p{Extended_Pictographic}\uFE0F\u200D\s]+$/gu;
 
 /**
+ * C0 control characters that don't belong in any free-text field:
+ * everything from U+0000 to U+001F except `\t`, `\n`, `\r`, plus the
+ * DEL character at U+007F. NUL truncates in C-level string tooling,
+ * BEL/ANSI escapes corrupt terminal scrollback when a body is logged
+ * or grepped. Issues #188 / #197.
+ */
+const FORBIDDEN_CONTROL_CHARS_RE = /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g;
+
+/**
+ * Return `true` if `s` contains any forbidden C0 control character.
+ * Used by the dispatcher to drop hostile PDS-direct writes without
+ * rewriting (which would break CID round-trip).
+ */
+export function hasForbiddenControlChars(s: string): boolean {
+  FORBIDDEN_CONTROL_CHARS_RE.lastIndex = 0;
+  return FORBIDDEN_CONTROL_CHARS_RE.test(s);
+}
+
+/**
  * Normalize a single raw note string. Returns `null` if the input is
  * empty or whitespace-only after normalization (so the caller can
  * reject the whole array).
  *
  * Steps (in order):
- *   1. NFC unicode normalization.
- *   2. Trim.
- *   3. Collapse internal whitespace (any run of whitespace becomes a
+ *   1. Strip C0 control chars (except `\t`, `\n`, `\r`) and DEL.
+ *   2. NFC unicode normalization.
+ *   3. Trim.
+ *   4. Collapse internal whitespace (any run of whitespace becomes a
  *      single space).
- *   4. Lowercase.
- *   5. Strip leading/trailing emoji.
- *   6. Trim again (step 5 may have exposed new edge whitespace).
+ *   5. Lowercase.
+ *   6. Strip leading/trailing emoji.
+ *   7. Trim again (step 6 may have exposed new edge whitespace).
  */
 export function normalizeNoteString(raw: string): string | null {
   if (typeof raw !== "string") return null;
-  let s = raw.normalize("NFC");
+  let s = raw.replace(FORBIDDEN_CONTROL_CHARS_RE, "");
+  s = s.normalize("NFC");
   s = s.trim();
   s = s.replace(/\s+/g, " ");
   s = s.toLowerCase();
@@ -176,7 +197,12 @@ export function sanitizeFreeText(raw: string, name: string): string {
   // we don't want to mint two "equal" descriptions that differ only in
   // their line endings. (This is purely a consistency improvement;
   // sanitize-html does not touch line endings.)
-  const normalized = stripped.replace(/\r\n?/g, "\n");
+  let normalized = stripped.replace(/\r\n?/g, "\n");
+  // Strip C0 control chars (except `\t`, `\n`, `\r` — `\r` was already
+  // folded above) and DEL. Issues #188 / #197: NUL/BEL/ANSI escapes
+  // silently round-trip otherwise and corrupt any tool that later
+  // reads the body into a terminal or a C-level buffer.
+  normalized = normalized.replace(FORBIDDEN_CONTROL_CHARS_RE, "");
   if (normalized.trim().length === 0) {
     throw new ActionError(
       400,
