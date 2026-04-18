@@ -9,19 +9,27 @@ issue #216.
 
 Select with `E2E_MODE`:
 
-| Mode | Target | Credentials | Status |
+| Mode | Target | Credentials | Runner |
 |------|--------|-------------|--------|
-| `live` (default) | `https://smellgate.app` (overridable with `SMELLGATE_E2E_URL`) | Real bsky account | Shipped |
-| `local` | `http://127.0.0.1:3000` + ephemeral `@atproto/dev-env` PDS | None (fixture mints accounts) | TODO — follow-up to #216 |
+| `local` | `http://127.0.0.1:3000` + ephemeral `@atproto/dev-env` PDS | None — `run-local.ts` pre-creates an account on the PDS | `pnpm test:e2e:local` |
+| `live` | `https://smellgate.app` (overridable with `SMELLGATE_E2E_URL`) | Real bsky account | `pnpm test:e2e` |
 
 ## Running locally
 
 ```bash
-# Anon-browse tests — no credentials needed.
-pnpm test:e2e --grep "anon-browse"
+# Preferred: hermetic local mode. No external services, no secrets.
+# `run-local.ts` boots an in-process PDS + PLC, pre-creates a test
+# account, starts `next dev` pointed at them, then runs Playwright.
+# Port 3000 must be free on your machine (the OAuth loopback client
+# metadata hardcodes `redirect_uris: [".../127.0.0.1:3000/..."]`).
+pnpm test:e2e:local
 
-# All tests including OAuth login. Provide creds as env vars or
-# drop them in tests/e2e/.secrets (gitignored):
+# Filter to a subset:
+pnpm test:e2e:local --grep "anon-browse"
+pnpm test:e2e:local --grep "OAuth"
+
+# Live mode against prod. Provide creds as env vars or drop them in
+# tests/e2e/.secrets (gitignored):
 #
 #   SMELLGATE_BSKY_HANDLE=smellgate.bsky.social
 #   SMELLGATE_BSKY_PASSWORD=<real-account-password>
@@ -41,8 +49,10 @@ Credentials are loaded by `helpers/creds.ts` in this order:
 2. `tests/e2e/.secrets` (gitignored, `KEY=VALUE` lines).
 3. `/tmp/.test-creds` (the codespace convention — see `scripts/agent-as.ts`).
 
-If no credentials are found, the OAuth login test skips with a clear
-message; the anon-browse suite still runs.
+In live mode, if no credentials are found the OAuth login test skips
+with a clear message; the anon-browse suite still runs. In local
+mode credentials are always available (the orchestrator creates
+them).
 
 ## Artifacts
 
@@ -57,16 +67,16 @@ Failing runs write to:
 
 ## CI
 
-See `.github/workflows/e2e.yml`. The workflow is `workflow_dispatch`
-only for now (manual trigger). To enable it:
+See `.github/workflows/e2e.yml`. Two jobs:
 
-1. Go to repo **Settings → Environments → `production`**.
-2. Add two secrets to that environment:
-   - `E2E_BSKY_HANDLE` — e.g. `smellgate.bsky.social`
-   - `E2E_BSKY_PASSWORD` — real account password (NOT an app-password)
-3. Run **Actions → E2E → Run workflow**, pick branch, optionally
-   override `SMELLGATE_E2E_URL` if you want to point at a preview
-   deploy.
+- **`local`** — runs on every `pull_request` and `push` to `main`. No
+  secrets required. `run-local.ts` handles the full lifecycle.
 
-Scheduled runs (cron) and PR-gated runs are a follow-up once the
-manual run is confirmed green.
+- **`live`** — `workflow_dispatch` only. Hits `https://smellgate.app`
+  (or a preview URL) with real bsky credentials. Uses secrets on the
+  `production` GitHub Environment:
+  - `E2E_BSKY_HANDLE` — e.g. `smellgate.bsky.social`
+  - `E2E_BSKY_PASSWORD` — real account password (NOT an app-password)
+
+  Trigger via **Actions → E2E → Run workflow → mode: live**. Optional
+  inputs: `target_url`, `grep`.

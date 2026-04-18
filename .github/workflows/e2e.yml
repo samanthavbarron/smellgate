@@ -1,13 +1,29 @@
 name: E2E
 
-# Manual-only for now (#216). Wire cron / PR gating once the suite is
-# confirmed green against prod and flake-free. Secrets live on the
-# `production` environment so they are NOT exposed to PRs from forks.
+# Two modes (see `tests/e2e/README.md`):
+#
+#   - `local` runs on every PR. No external services, no secrets.
+#     `tests/e2e/run-local.ts` spins up an in-process PDS + PLC via
+#     `@atproto/dev-env`, starts `next dev` against it, and runs the
+#     Playwright suite end-to-end in ~30s.
+#
+#   - `live` runs on manual dispatch only. Hits prod / a preview deploy
+#     with a real bsky.social account. Secrets live on the `production`
+#     environment so they are NOT exposed to PRs from forks.
 on:
+  pull_request:
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
+      mode:
+        description: "E2E_MODE (local|live)"
+        required: true
+        default: "live"
+        type: choice
+        options: [local, live]
       target_url:
-        description: "Target URL (default: https://smellgate.app)"
+        description: "Target URL (live mode only)"
         required: false
         default: "https://smellgate.app"
       grep:
@@ -16,23 +32,94 @@ on:
         default: ""
 
 concurrency:
-  group: e2e
-  cancel-in-progress: false
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
-  e2e:
-    name: Playwright against ${{ inputs.target_url }}
+  local:
+    name: E2E (local)
+    # Runs on every PR and push to main. Also runs on manual dispatch
+    # when `mode == 'local'`. No secrets needed.
+    if: >-
+      ${{ github.event_name == 'pull_request'
+          || github.event_name == 'push'
+          || (github.event_name == 'workflow_dispatch'
+              && inputs.mode == 'local') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Get pnpm store directory
+        id: pnpm-store
+        shell: bash
+        run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-store.outputs.path }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run E2E (local)
+        # The orchestrator (`tests/e2e/run-local.ts`) runs
+        # `pnpm build:lex` itself before booting `next dev`, so no
+        # separate lexicon-build step is needed.
+        run: |
+          if [ -n "${{ inputs.grep }}" ]; then
+            pnpm test:e2e:local --grep "${{ inputs.grep }}"
+          else
+            pnpm test:e2e:local
+          fi
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-local
+          path: playwright-report
+          if-no-files-found: ignore
+
+      - name: Upload custom artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-artifacts-local
+          path: tests/e2e/artifacts
+          if-no-files-found: ignore
+
+  live:
+    name: E2E (live) against ${{ inputs.target_url }}
+    # Manual-dispatch only. Secrets on `production` environment.
+    if: >-
+      ${{ github.event_name == 'workflow_dispatch'
+          && inputs.mode == 'live' }}
     runs-on: ubuntu-latest
     environment: production
     timeout-minutes: 30
     env:
       E2E_MODE: live
       SMELLGATE_E2E_URL: ${{ inputs.target_url }}
-      # These secrets must be configured on the `production` environment.
-      # See tests/e2e/README.md "CI" section.
       SMELLGATE_BSKY_HANDLE: ${{ secrets.E2E_BSKY_HANDLE }}
       SMELLGATE_BSKY_PASSWORD: ${{ secrets.E2E_BSKY_PASSWORD }}
     steps:
@@ -66,7 +153,7 @@ jobs:
       - name: Install Playwright browsers
         run: pnpm exec playwright install --with-deps chromium
 
-      - name: Run E2E
+      - name: Run E2E (live)
         run: |
           if [ -n "${{ inputs.grep }}" ]; then
             pnpm test:e2e --grep "${{ inputs.grep }}"
@@ -78,7 +165,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report
+          name: playwright-report-live
           path: playwright-report
           if-no-files-found: ignore
 
@@ -86,6 +173,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-artifacts
+          name: e2e-artifacts-live
           path: tests/e2e/artifacts
           if-no-files-found: ignore

@@ -108,15 +108,16 @@ async function dumpArtifacts(
   );
 }
 
-test.describe("OAuth login against bsky.social", () => {
+test.describe("OAuth login", () => {
   test("signs in and lands back on smellgate authenticated", async ({
     page,
     creds,
     baseUrl,
+    authorizeOrigin,
   }, testInfo) => {
     test.skip(
       !creds,
-      "No bsky OAuth creds configured. Set SMELLGATE_BSKY_HANDLE/PASSWORD or E2E_BSKY_*.",
+      "No OAuth creds configured. Set SMELLGATE_BSKY_HANDLE/PASSWORD or E2E_BSKY_*, or run via `pnpm test:e2e:local`.",
     );
     const log = installNetworkLog(page);
 
@@ -138,9 +139,14 @@ test.describe("OAuth login against bsky.social", () => {
       await handleInput.fill(creds!.handle);
 
       // 3. Submit the form — the LoginForm POSTs /oauth/login then does a
-      //    full-page `window.location.href = redirectUrl`.
+      //    full-page `window.location.href = redirectUrl`. The authorize
+      //    page lives on `bsky.social` in live mode and on the ephemeral
+      //    PDS in local mode.
+      const authorizeRe = new RegExp(
+        `^${authorizeOrigin.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/oauth/authorize`,
+      );
       await Promise.all([
-        page.waitForURL(/bsky\.social\/oauth\/authorize/, {
+        page.waitForURL(authorizeRe, {
           timeout: 30_000,
         }),
         page
@@ -173,13 +179,24 @@ test.describe("OAuth login against bsky.social", () => {
         .first()
         .click();
 
-      // bsky may show a consent/approve screen after login. If there is
-      // a visible "Accept" / "Approve" / "Allow" button, click it.
-      const approve = page.getByRole("button", {
-        name: /accept|approve|allow|authorize|continue/i,
-      });
-      if (await approve.first().isVisible().catch(() => false)) {
+      // The OAuth provider shows a consent/approve screen after login.
+      // Against bsky.social the button has the standard `role="button"`
+      // and Playwright's `getByRole` matches fine. Against the
+      // `@atproto/oauth-provider` used by both bsky and the dev-env PDS,
+      // the authorize button is `<button role="Button" type="submit">` —
+      // capitalized `Button` is not a standard aria role, so
+      // `getByRole("button", ...)` misses it. Fall back to a text-based
+      // locator on any `<button>` element, and wait up to 10s for the
+      // SPA to transition from the sign-in panel to the consent panel.
+      const approve = page
+        .locator("button")
+        .filter({ hasText: /^(accept|approve|allow|authorize|continue)$/i });
+      try {
+        await approve.first().waitFor({ state: "visible", timeout: 10_000 });
         await approve.first().click();
+      } catch {
+        // If the provider skipped consent (remembered previous grant,
+        // e.g.) that's fine — fall through to the URL wait below.
       }
 
       // 6. The critical wait: bsky should meta-refresh / redirect us to
