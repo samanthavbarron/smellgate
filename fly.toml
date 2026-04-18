@@ -1,0 +1,55 @@
+# Fly.io app config for smellgate.
+#
+# - Single app (not split into smellgate + smellgate-tap). Tap hosting is
+#   deferred to its own PR; see issue #148.
+# - Region iad (us-east); SQLite cache lives on a 1GB volume at /data.
+# - First deploy host: https://smellgate.fly.dev. Custom domain is a
+#   follow-up (docs/deployment.md "DNS").
+# - Healthcheck hits GET /api/health, which is intentionally DB/auth-free
+#   so a broken auth config doesn't lock the machine out of starting.
+
+app = "smellgate"
+primary_region = "iad"
+
+[build]
+
+# ---------------------------------------------------------------------------
+# HTTP service
+# ---------------------------------------------------------------------------
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = "suspend"
+  auto_start_machines = true
+  # Keep a warm instance so the OAuth callback round-trip and the Tap webhook
+  # don't cold-start. With auto_stop = "suspend", this just keeps one machine
+  # not-suspended; it still scales up under load.
+  min_machines_running = 1
+  processes = ["app"]
+
+# ---------------------------------------------------------------------------
+# Persistent volume for the SQLite read cache
+# ---------------------------------------------------------------------------
+[[mounts]]
+  source = "smellgate_data"
+  destination = "/data"
+
+# ---------------------------------------------------------------------------
+# HTTP healthcheck (hits the /api/health route added in this PR)
+# ---------------------------------------------------------------------------
+[[http_service.checks]]
+  interval = "30s"
+  timeout = "5s"
+  grace_period = "15s"
+  method = "GET"
+  path = "/api/health"
+  protocol = "http"
+
+# ---------------------------------------------------------------------------
+# VM sizing. Modest for v1 — adjust upward if SSR latency suffers under load.
+# ---------------------------------------------------------------------------
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1
