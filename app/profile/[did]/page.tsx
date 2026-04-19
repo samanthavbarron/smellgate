@@ -39,6 +39,7 @@
 import Link from "next/link";
 import { getDb } from "@/lib/db";
 import {
+  getKindredUsersByPalette,
   getSignatureNotesForUser,
   getUserShelf,
   getUserReviews,
@@ -60,15 +61,29 @@ export default async function ProfilePage({ params }: { params: Params }) {
   const did = decodeURIComponent(rawDid);
 
   const db = getDb();
-  const [session, handle, shelf, reviews, descriptions, signatureNotes] =
-    await Promise.all([
-      getSession(),
-      getAccountHandle(did),
-      getUserShelf(db, did),
-      getUserReviews(db, did),
-      getUserDescriptions(db, did),
-      getSignatureNotesForUser(db, did),
-    ]);
+  const [
+    session,
+    handle,
+    shelf,
+    reviews,
+    descriptions,
+    signatureNotes,
+    kindred,
+  ] = await Promise.all([
+    getSession(),
+    getAccountHandle(did),
+    getUserShelf(db, did),
+    getUserReviews(db, did),
+    getUserDescriptions(db, did),
+    getSignatureNotesForUser(db, did),
+    getKindredUsersByPalette(db, did),
+  ]);
+  const kindredHandles = new Map<string, string | null>();
+  await Promise.all(
+    kindred.map(async (k) => {
+      kindredHandles.set(k.did, await getAccountHandle(k.did));
+    }),
+  );
   // Issue #131 reviewer follow-up: when the signed-in user is looking
   // at their own profile, surface a link to /profile/me/submissions.
   // Own-profile detection is the same (session.did === did) check used
@@ -245,7 +260,65 @@ export default async function ProfilePage({ params }: { params: Params }) {
           </ul>
         )}
       </section>
+
+      {/* Kindred palettes (#217 phase 7) ------------------------------- */}
+      {kindred.length > 0 && (
+        <section>
+          <div className="mb-4">
+            <h2 className="text-lg font-semibold tracking-tight text-zinc-900 dark:text-zinc-100">
+              Kindred palettes
+            </h2>
+            <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-500">
+              Profiles whose signature notes produce the most visually similar
+              palettes.
+            </p>
+          </div>
+          <ul className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            {kindred.map((k) => (
+              <li key={k.did}>
+                <KindredCard
+                  did={k.did}
+                  handle={kindredHandles.get(k.did) ?? null}
+                  notes={k.notes}
+                />
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
     </div>
+  );
+}
+
+function KindredCard({
+  did,
+  handle,
+  notes,
+}: {
+  did: string;
+  handle: string | null;
+  notes: string[];
+}) {
+  const palette = paletteForNotes(notes);
+  return (
+    <Link
+      href={`/profile/${encodeURIComponent(did)}`}
+      className="block overflow-hidden rounded-lg border border-zinc-200 bg-white transition-colors hover:border-amber-600 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-amber-500"
+    >
+      <div
+        aria-hidden
+        className="h-12 w-full"
+        style={{ background: paletteGradientCss(palette, "to right") }}
+      />
+      <div className="p-3">
+        <div className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">
+          {handle ? `@${handle}` : "Unknown handle"}
+        </div>
+        <div className="mt-1 truncate text-xs text-zinc-500 dark:text-zinc-400">
+          {notes.slice(0, 3).join(" · ")}
+        </div>
+      </div>
+    </Link>
   );
 }
 

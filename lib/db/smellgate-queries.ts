@@ -631,6 +631,67 @@ export async function getSignatureNotesForUser(
   return scored.slice(0, limit).map((s) => s.note);
 }
 
+/**
+ * Find up to `limit` other users whose signature-notes palette sits
+ * closest in color space to the target user (issue #217 phase 7).
+ *
+ * Cost is O(U × N) where U is the number of users with any review or
+ * shelf activity and N is the number of catalog notes. We materialise
+ * each candidate's signature notes + palette in-process and rank
+ * client-side. This is fine at v0 scale (a handful of users). When
+ * the user base grows, this should move to a precomputed
+ * per-user-palette column or a cron-driven nearest-neighbour index.
+ *
+ * The target user itself is excluded from the result.
+ *
+ * Implementation detail: we intentionally *don't* rank by raw note
+ * overlap. Two users who love "rose" and "iris" respectively have
+ * very visually similar palettes (both cold-florals) even though
+ * their note sets don't intersect — palette distance catches that
+ * kinship; note overlap would miss it.
+ */
+export async function getKindredUsersByPalette(
+  db: Db,
+  targetDid: string,
+  limit = 3,
+): Promise<{ did: string; notes: string[] }[]> {
+  // Import lazily to keep the palette module out of non-render code
+  // paths. Not strictly required today but scopes the dependency.
+  const { paletteForNotes, paletteDistance } = await import("../palette");
+
+  const targetNotes = await getSignatureNotesForUser(db, targetDid);
+  if (targetNotes.length === 0) return [];
+  const targetPalette = paletteForNotes(targetNotes);
+
+  // Candidate DIDs: anyone with at least one review or shelf-item,
+  // other than the target.
+  const reviewerDids = await db
+    .selectFrom("smellgate_review")
+    .select("author_did")
+    .where("author_did", "!=", targetDid)
+    .distinct()
+    .execute();
+  const shelfDids = await db
+    .selectFrom("smellgate_shelf_item")
+    .select("author_did")
+    .where("author_did", "!=", targetDid)
+    .distinct()
+    .execute();
+  const candidateSet = new Set<string>();
+  for (const r of reviewerDids) candidateSet.add(r.author_did);
+  for (const s of shelfDids) candidateSet.add(s.author_did);
+
+  const scored: { did: string; notes: string[]; distance: number }[] = [];
+  for (const did of candidateSet) {
+    const notes = await getSignatureNotesForUser(db, did);
+    if (notes.length === 0) continue;
+    const distance = paletteDistance(targetPalette, paletteForNotes(notes));
+    scored.push({ did, notes, distance });
+  }
+  scored.sort((a, b) => a.distance - b.distance);
+  return scored.slice(0, limit).map(({ did, notes }) => ({ did, notes }));
+}
+
 export async function getUserReviews(
   db: Db,
   did: string,
