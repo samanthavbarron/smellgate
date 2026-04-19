@@ -39,6 +39,7 @@
 import Link from "next/link";
 import { getDb } from "@/lib/db";
 import {
+  getSignatureNotesForUser,
   getUserShelf,
   getUserReviews,
   getUserDescriptions,
@@ -48,8 +49,9 @@ import {
 import type { SmellgateReviewTable } from "@/lib/db";
 import { getAccountHandle } from "@/lib/db/queries";
 import { getSession } from "@/lib/auth/session";
-import { PerfumeTile } from "@/components/PerfumeTile";
+import { PerfumeTile, NoteChip } from "@/components/PerfumeTile";
 import ProfileNotFound from "./not-found";
+import { paletteForNotes, paletteGradientCss } from "@/lib/palette";
 
 type Params = Promise<{ did: string }>;
 
@@ -58,13 +60,15 @@ export default async function ProfilePage({ params }: { params: Params }) {
   const did = decodeURIComponent(rawDid);
 
   const db = getDb();
-  const [session, handle, shelf, reviews, descriptions] = await Promise.all([
-    getSession(),
-    getAccountHandle(did),
-    getUserShelf(db, did),
-    getUserReviews(db, did),
-    getUserDescriptions(db, did),
-  ]);
+  const [session, handle, shelf, reviews, descriptions, signatureNotes] =
+    await Promise.all([
+      getSession(),
+      getAccountHandle(did),
+      getUserShelf(db, did),
+      getUserReviews(db, did),
+      getUserDescriptions(db, did),
+      getSignatureNotesForUser(db, did),
+    ]);
   // Issue #131 reviewer follow-up: when the signed-in user is looking
   // at their own profile, surface a link to /profile/me/submissions.
   // Own-profile detection is the same (session.did === did) check used
@@ -109,17 +113,45 @@ export default async function ProfilePage({ params }: { params: Params }) {
           .execute();
   const perfumeByUri = new Map(perfumeRows.map((p) => [p.uri, p]));
 
+  // Issue #217 phase 4-5: a user's palette comes from their signature
+  // notes (computed relative to catalog baseline), not from averaging
+  // every note they've ever touched. Sparse-data users (new accounts
+  // with no reviews yet) get an empty signature → neutral palette.
+  const userPalette = paletteForNotes(signatureNotes);
+
   return (
     <div className="space-y-12">
       {/* Header ------------------------------------------------------ */}
       <section>
+        <div
+          aria-hidden
+          className="mb-6 h-24 w-full rounded-lg"
+          style={{ background: paletteGradientCss(userPalette, "to right") }}
+        />
         <h1 className="text-4xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-100">
           {handle ? `@${handle}` : "Unknown handle"}
         </h1>
         <div className="mt-2 break-all font-mono text-xs text-zinc-500 dark:text-zinc-500">
           {did}
         </div>
-        <div className="mt-3 flex flex-wrap gap-4 text-sm">
+        {signatureNotes.length > 0 ? (
+          <div className="mt-4">
+            <div className="text-xs uppercase tracking-wide text-zinc-500 dark:text-zinc-500">
+              Signature notes
+            </div>
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              {signatureNotes.map((note) => (
+                <NoteChip key={note} note={note} />
+              ))}
+            </div>
+          </div>
+        ) : (
+          <p className="mt-4 text-xs italic text-zinc-500 dark:text-zinc-500">
+            Palette is still forming — rate or shelf a few perfumes to shape
+            it.
+          </p>
+        )}
+        <div className="mt-4 flex flex-wrap gap-4 text-sm">
           <Link
             href={`/profile/${encodeURIComponent(did)}/submissions`}
             className="text-amber-700 underline hover:text-amber-800 dark:text-amber-400 dark:hover:text-amber-300"
