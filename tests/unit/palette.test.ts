@@ -8,6 +8,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  paletteDistance,
   paletteForNotes,
   paletteGradientCss,
   swatchCssBg,
@@ -139,5 +140,35 @@ describe("swatchCssBg / swatchCssFg", () => {
     expect(swatchCssBg(s)).toBe(
       `hsl(${s.bg.h} ${s.bg.s}% ${s.bg.l}%)`,
     );
+  });
+});
+
+describe("paletteDistance", () => {
+  it("returns 0 for a palette compared against itself", () => {
+    const p = paletteForNotes(["rose", "vetiver", "oakmoss"]);
+    expect(paletteDistance(p, p)).toBe(0);
+  });
+
+  it("is symmetric — d(a,b) == d(b,a)", () => {
+    const a = paletteForNotes(["rose", "jasmine"]);
+    const b = paletteForNotes(["oud", "patchouli"]);
+    expect(paletteDistance(a, b)).toBeCloseTo(paletteDistance(b, a), 6);
+  });
+
+  it("ranks visually-close palettes closer than dissimilar ones", () => {
+    // Both these pairs are cold florals — should feel close.
+    const coldFlorals = paletteForNotes(["iris", "violet"]);
+    const coldFloralsTwin = paletteForNotes(["iris", "lavender"]);
+    // Warm resinous profile — should feel far from the cold florals.
+    const warmResin = paletteForNotes(["amber", "labdanum", "tobacco"]);
+    const twinDistance = paletteDistance(coldFlorals, coldFloralsTwin);
+    const crossDistance = paletteDistance(coldFlorals, warmResin);
+    expect(twinDistance).toBeLessThan(crossDistance);
+  });
+
+  it("returns Infinity when either palette is empty", () => {
+    expect(
+      paletteDistance({ notes: [], stops: [] }, paletteForNotes(["rose"])),
+    ).toBe(Infinity);
   });
 });

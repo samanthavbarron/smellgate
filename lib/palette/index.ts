@@ -211,3 +211,48 @@ function padToMin(
 function clamp(n: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, n));
 }
+
+/**
+ * Approximate visual distance between two palettes (issue #217 phase 7).
+ *
+ * Symmetric minimum-matching distance in HSL:
+ *   - For each stop in A, find the closest stop in B; take that pair's
+ *     HSL distance.
+ *   - Sum those up. Then do the same starting from B. Take the average.
+ *
+ * This is a rough earth-mover's stand-in. Perfectly correct
+ * transportation-cost is overkill for a ranking signal — we just want
+ * "palettes that feel close" to score low. Lower = more similar; 0
+ * means identical.
+ *
+ * Hue is treated modulo 360; lightness and saturation are weighted
+ * equally against hue after a small scaling so all three dimensions
+ * contribute meaningfully in the 0–100 range.
+ */
+export function paletteDistance(a: Palette, b: Palette): number {
+  if (a.stops.length === 0 || b.stops.length === 0) return Infinity;
+  const forward = oneDirectionDistance(a.stops, b.stops);
+  const backward = oneDirectionDistance(b.stops, a.stops);
+  return (forward + backward) / 2;
+}
+
+function oneDirectionDistance(from: Swatch[], to: Swatch[]): number {
+  let total = 0;
+  for (const s of from) {
+    let best = Infinity;
+    for (const t of to) {
+      const d = hslDistance(s, t);
+      if (d < best) best = d;
+    }
+    total += best;
+  }
+  return total / from.length;
+}
+
+function hslDistance(a: Swatch, b: Swatch): number {
+  const rawDh = Math.abs(a.bg.h - b.bg.h);
+  const dh = Math.min(rawDh, 360 - rawDh) / 1.8; // 0-200 → 0-111
+  const ds = Math.abs(a.bg.s - b.bg.s);
+  const dl = Math.abs(a.bg.l - b.bg.l);
+  return Math.sqrt(dh * dh + ds * ds + dl * dl);
+}

@@ -1396,4 +1396,59 @@ describe("smellgate-queries", () => {
       expect(notes.length).toBe(5);
     });
   });
+
+  describe("getKindredUsersByPalette (#217 phase 7)", () => {
+    it("returns empty when the target user has no signature notes", async () => {
+      const kindred = await env.q.getKindredUsersByPalette(
+        env.db.getDb(),
+        USER_A,
+      );
+      expect(kindred).toEqual([]);
+    });
+
+    it("excludes the target user from its own results", async () => {
+      const p = await seedPerfume(env.db, {
+        name: "Alpha",
+        house: "Y",
+        notes: ["rose", "oakmoss"],
+      });
+      await seedReview(env.db, USER_A, p, "ok", 10);
+      await seedReview(env.db, USER_B, p, "ok", 10);
+      const kindred = await env.q.getKindredUsersByPalette(
+        env.db.getDb(),
+        USER_A,
+      );
+      expect(kindred.map((k) => k.did)).not.toContain(USER_A);
+    });
+
+    it("ranks visually-closer users higher than dissimilar ones", async () => {
+      // User C likes iris + violet (cold-floral palette).
+      // User D likes amber + tobacco (warm-resinous palette).
+      // Target user (A) also likes iris + lavender — should be
+      // palette-closer to C than D.
+      const coldFloralPerfume = await seedPerfume(env.db, {
+        name: "Cold A",
+        house: "Y",
+        notes: ["iris", "lavender"],
+      });
+      const coldFloralTwinPerfume = await seedPerfume(env.db, {
+        name: "Cold B",
+        house: "Y",
+        notes: ["iris", "violet"],
+      });
+      const warmResinPerfume = await seedPerfume(env.db, {
+        name: "Warm A",
+        house: "Z",
+        notes: ["amber", "tobacco"],
+      });
+      await seedReview(env.db, USER_A, coldFloralPerfume, "ok", 10);
+      await seedReview(env.db, "did:plc:userC", coldFloralTwinPerfume, "ok", 10);
+      await seedReview(env.db, "did:plc:userD", warmResinPerfume, "ok", 10);
+      const kindred = await env.q.getKindredUsersByPalette(
+        env.db.getDb(),
+        USER_A,
+      );
+      expect(kindred[0].did).toBe("did:plc:userC");
+    });
+  });
 });
