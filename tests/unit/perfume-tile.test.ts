@@ -106,24 +106,22 @@ describe("PerfumeTile highlight prop (#120)", () => {
     expect(html).not.toContain("vetiver");
   });
 
-  it("applies emphasis styling to the highlighted chip (font-medium + darker zinc)", () => {
+  it("applies a ring around the highlighted chip (#217 chroma change)", () => {
     const perfume = makePerfume({
       notes: ["birch", "vetiver", "smoke"],
     });
     const html = renderToString(
       createElement(PerfumeTile, { perfume, highlight: "vetiver" }),
     );
-    // The highlighted chip uses `font-medium` + `bg-zinc-200` (light)
-    // / `dark:bg-zinc-700` (dark) — visually bolder than the default
-    // `bg-zinc-100` / `dark:bg-zinc-800`. Per docs/ui.md we avoid
-    // amber for tag highlighting since amber is reserved for link
-    // semantics.
+    // Since #217, chip background is the note's swatch colour, so
+    // emphasis can't re-use `bg-zinc-200`. The highlighted chip gets
+    // a ring instead. Per docs/ui.md we still avoid amber for tag
+    // highlighting — amber is reserved for link semantics.
     expect(html).toMatch(
-      /class="[^"]*bg-zinc-200[^"]*font-medium[^"]*"[^>]*>vetiver<\/span>/,
+      /class="[^"]*ring-2[^"]*"[^>]*>vetiver<\/span>/,
     );
-    // Non-highlighted chips keep the default class string.
-    expect(html).toMatch(
-      /class="[^"]*bg-zinc-100[^"]*"[^>]*>birch<\/span>/,
-    );
+    // Non-highlighted chips have no ring.
+    const birchChip = html.match(/<span[^>]*>birch<\/span>/)?.[0] ?? "";
+    expect(birchChip).not.toMatch(/ring-2/);
   });
 });

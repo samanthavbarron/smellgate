@@ -52,6 +52,13 @@ import { getSession } from "@/lib/auth/session";
 import { getAccountHandle } from "@/lib/db/queries";
 import { VoteButtons } from "@/components/forms/VoteButtons";
 import PerfumeNotFound from "./not-found";
+import {
+  paletteForNotes,
+  paletteGradientCss,
+  swatchCssBg,
+  swatchCssFg,
+  swatchFor,
+} from "@/lib/palette";
 
 type Params = Promise<{ uri: string }>;
 
@@ -111,11 +118,19 @@ export default async function PerfumeDetailPage({
 
   const encodedUri = encodeURIComponent(uri);
   const signedIn = !!session;
+  // Issue #217: palette header — light-to-dark gradient derived from
+  // the fragrance's full note list.
+  const palette = paletteForNotes(perfume.notes);
 
   return (
     <div className="space-y-12">
       {/* Header block ------------------------------------------------- */}
       <section>
+        <div
+          aria-hidden
+          className="mb-6 h-32 w-full rounded-lg"
+          style={{ background: paletteGradientCss(palette, "to bottom") }}
+        />
         <h1 className="text-4xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-100">
           {perfume.name}
         </h1>
@@ -127,15 +142,22 @@ export default async function PerfumeDetailPage({
 
         {perfume.notes.length > 0 && (
           <div className="mt-4 flex flex-wrap gap-1.5">
-            {perfume.notes.map((note) => (
-              <Link
-                key={note}
-                href={`/tag/note/${encodeURIComponent(note)}`}
-                className="inline-flex items-center rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-700 transition-colors hover:bg-amber-100 hover:text-amber-800 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-amber-950/60 dark:hover:text-amber-300"
-              >
-                {note}
-              </Link>
-            ))}
+            {perfume.notes.map((note) => {
+              const sw = swatchFor(note);
+              return (
+                <Link
+                  key={note}
+                  href={`/tag/note/${encodeURIComponent(note)}`}
+                  className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium transition-transform hover:scale-[1.03]"
+                  style={{
+                    background: swatchCssBg(sw),
+                    color: swatchCssFg(sw),
+                  }}
+                >
+                  {note}
+                </Link>
+              );
+            })}
           </div>
         )}
 

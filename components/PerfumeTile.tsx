@@ -17,6 +17,13 @@
  */
 import Link from "next/link";
 import type { PerfumeWithNotes } from "@/lib/db/smellgate-queries";
+import {
+  paletteForNotes,
+  paletteGradientCss,
+  swatchCssBg,
+  swatchCssFg,
+  swatchFor,
+} from "@/lib/palette";
 
 const MAX_CHIPS = 3;
 
@@ -43,39 +50,74 @@ export function PerfumeTile({
 }) {
   const href = `/perfume/${encodeURIComponent(perfume.uri)}`;
   const topNotes = pickDisplayedNotes(perfume.notes, highlight);
+  // Issue #217: derive a light-to-dark palette from the full note list
+  // (not just the 3 displayed chips) so the gradient reflects the
+  // whole fragrance, not the arbitrary first-3 slice.
+  const palette = paletteForNotes(perfume.notes);
   return (
     <Link
       href={href}
       data-smellgate-perfume={perfume.uri}
-      className="block h-full rounded-lg border border-zinc-200 bg-white p-4 transition-colors hover:border-amber-600 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-amber-500"
+      className="block h-full overflow-hidden rounded-lg border border-zinc-200 bg-white transition-colors hover:border-amber-600 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-amber-500"
     >
-      <div className="text-base font-medium text-zinc-900 dark:text-zinc-100">
-        {perfume.name}
-      </div>
-      <div className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
-        {perfume.house}
-        {perfume.creator ? ` · ${perfume.creator}` : ""}
-        {perfume.release_year ? ` · ${perfume.release_year}` : ""}
-      </div>
-      {topNotes.length > 0 && (
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          {topNotes.map((note) => {
-            const isHighlighted = highlight !== undefined && note === highlight;
-            // Highlighted chip: bolder weight + darker zinc shade
-            // (zinc-200/zinc-700 vs the default zinc-100/zinc-800).
-            // Per docs/ui.md, amber is reserved for link semantics —
-            // do not re-use it for tag highlighting.
-            const chipClass = isHighlighted
-              ? "inline-flex items-center rounded-full bg-zinc-200 px-2 py-0.5 text-xs font-medium text-zinc-900 dark:bg-zinc-700 dark:text-zinc-100"
-              : "inline-flex items-center rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300";
-            return (
-              <span key={note} className={chipClass}>
-                {note}
-              </span>
-            );
-          })}
+      <div
+        aria-hidden
+        className="h-16 w-full"
+        style={{ background: paletteGradientCss(palette, "to right") }}
+      />
+      <div className="p-4">
+        <div className="text-base font-medium text-zinc-900 dark:text-zinc-100">
+          {perfume.name}
         </div>
-      )}
+        <div className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
+          {perfume.house}
+          {perfume.creator ? ` · ${perfume.creator}` : ""}
+          {perfume.release_year ? ` · ${perfume.release_year}` : ""}
+        </div>
+        {topNotes.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            {topNotes.map((note) => (
+              <NoteChip
+                key={note}
+                note={note}
+                emphasize={highlight !== undefined && note === highlight}
+              />
+            ))}
+          </div>
+        )}
+      </div>
     </Link>
+  );
+}
+
+/**
+ * Note chip coloured by the note's swatch. `emphasize=true` on the
+ * chip matching the tag-page highlight adds a ring so the tag is
+ * still discernible when the surrounding palette is already using
+ * its color.
+ */
+export function NoteChip({
+  note,
+  emphasize = false,
+}: {
+  note: string;
+  emphasize?: boolean;
+}) {
+  const sw = swatchFor(note);
+  return (
+    <span
+      className={
+        "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium" +
+        (emphasize
+          ? " ring-2 ring-offset-1 ring-zinc-800 dark:ring-zinc-100 dark:ring-offset-zinc-900"
+          : "")
+      }
+      style={{
+        background: swatchCssBg(sw),
+        color: swatchCssFg(sw),
+      }}
+    >
+      {note}
+    </span>
   );
 }
