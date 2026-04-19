@@ -12,8 +12,9 @@
  * - Synesthetic where it doesn't (iris → cold lavender-gray,
  *   aldehydes → silver-champagne, musk → warm skin tone).
  * - Desaturated / muted. Natural pigments and ochres, no pure
- *   primaries. Saturation stays below ~60%; lightness in the 30–80%
- *   band so palette gradients read but don't shout.
+ *   primaries. Saturation typically stays in 20–55% (a few bright
+ *   citrus notes sit up to 70%); lightness in the 25–90% band so
+ *   palette gradients read but don't shout.
  * - Light/dark variants are computed per-swatch so text contrast is
  *   programmatic rather than per-palette.
  *
@@ -28,8 +29,10 @@
  *    muted band so a single stray hashed swatch doesn't break a
  *    palette's visual coherence.
  *
- * The library is intentionally small (top ~60 notes cover ~85% of
- * note occurrences in the current catalog). Growing it is a curator
+ * Measured against the v0 seed catalog (187 unique notes, 383 total
+ * occurrences): ~79% of unique notes and ~90% of occurrences get an
+ * exact or token-fallback match; the rest resolve through the
+ * deterministic hash fallback. Growing the library is a curator
  * activity and follows the issue's feedback-loop philosophy: fragrance
  * palettes that feel wrong drive library updates, not the other way
  * around.
@@ -191,6 +194,30 @@ const SWATCHES: Record<string, Swatch> = {
 
   // Tea / herbs
   "white tea": hsl(50, 15, 88),
+  "green tea": hsl(75, 28, 55),
+
+  // Gourmand / sweet additions (high-frequency in the seed catalog)
+  honey: hsl(40, 55, 55),
+  beeswax: hsl(45, 45, 60),
+  apricot: hsl(25, 55, 65),
+  quince: hsl(40, 40, 60),
+  "coconut water": hsl(50, 20, 85),
+  fig: hsl(315, 25, 38),
+
+  // Spice additions
+  cinnamon: hsl(18, 50, 40),
+  cardamom: hsl(55, 28, 55),
+  "black pepper": hsl(25, 18, 32),
+
+  // Floral additions
+  osmanthus: hsl(30, 50, 70),
+  honeysuckle: hsl(48, 45, 78),
+  "lily of the valley": hsl(60, 15, 88),
+  "linden blossom": hsl(50, 35, 75),
+  carnation: hsl(355, 35, 55),
+
+  // Wood additions
+  cypress: hsl(130, 22, 35),
 };
 
 /**

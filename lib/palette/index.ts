@@ -69,14 +69,16 @@ export function paletteForNotes(
     };
   }
 
-  // 1 & 2: resolve + dedupe by visual bucket.
-  const bucketed = new Map<string, { note: string; sw: Swatch }>();
+  // 1 & 2: resolve + dedupe by visual distance (NOT grid bucketing —
+  // rounding boundaries would split near-identical swatches into
+  // different buckets). Walk the notes in order; keep a swatch only
+  // if it's visually distinct from every previously-kept swatch.
+  const unique: { note: string; sw: Swatch }[] = [];
   for (const note of rawNotes) {
     const sw = swatchFor(note);
-    const key = bucketKey(sw);
-    if (!bucketed.has(key)) bucketed.set(key, { note, sw });
+    if (unique.some((u) => visuallyClose(u.sw, sw))) continue;
+    unique.push({ note, sw });
   }
-  const unique = Array.from(bucketed.values());
 
   // 3: sort low-to-high lightness for the selection step.
   unique.sort((a, b) => a.sw.bg.l - b.sw.bg.l);
@@ -114,10 +116,15 @@ export function paletteGradientCss(
   direction: string = "to bottom",
 ): string {
   if (p.stops.length === 0) return "transparent";
-  const stops = p.stops
+  // CSS `linear-gradient` requires ≥ 2 color stops — a single-stop
+  // gradient is rejected as invalid. Duplicate the one stop so the
+  // fallback still renders as a solid panel rather than leaving the
+  // element with no `background:`.
+  const effective = p.stops.length === 1 ? [p.stops[0], p.stops[0]] : p.stops;
+  const stops = effective
     .map(
       (s, i) =>
-        `${swatchCssBg(s)} ${((i / Math.max(1, p.stops.length - 1)) * 100).toFixed(1)}%`,
+        `${swatchCssBg(s)} ${((i / Math.max(1, effective.length - 1)) * 100).toFixed(1)}%`,
     )
     .join(", ");
   return `linear-gradient(${direction}, ${stops})`;
@@ -131,14 +138,17 @@ function neutralSwatch(): Swatch {
 }
 
 /**
- * Visual-bucket key: the swatch's HSL rounded to a coarse grid. Two
- * swatches that share a key are close enough that including both would
- * look like a duplicate stop.
+ * Two swatches are visually close when their HSL triplets are within
+ * a small per-axis delta. Distance-based (not grid-bucketed) so a
+ * swatch sitting right on a bucket boundary doesn't escape dedup.
+ * Hue wrap is approximated: we take the shorter of the two arcs.
  */
-function bucketKey(s: Swatch): string {
-  const h = Math.round(s.bg.h / 20) * 20;
-  const l = Math.round(s.bg.l / 10) * 10;
-  return `${h}:${l}`;
+function visuallyClose(a: Swatch, b: Swatch): boolean {
+  const dl = Math.abs(a.bg.l - b.bg.l);
+  const ds = Math.abs(a.bg.s - b.bg.s);
+  const rawDh = Math.abs(a.bg.h - b.bg.h);
+  const dh = Math.min(rawDh, 360 - rawDh);
+  return dl < 15 && ds < 20 && dh < 25;
 }
 
 /**

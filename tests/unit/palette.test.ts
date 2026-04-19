@@ -90,19 +90,16 @@ describe("paletteForNotes", () => {
     expect(a).toEqual(b);
   });
 
-  it("dedupes visually-adjacent swatches (musk / white musk)", () => {
-    // These two notes live in the same visual bucket — they should
-    // collapse to one stop rather than producing a muddy pair.
+  it("dedupes visually-adjacent swatches (musk / white musk) — only one is retained", () => {
+    // These two notes are visually close (same warm-beige band).
+    // Only one should be kept as an original stop; the other must
+    // not appear in p.notes.
     const p = paletteForNotes(["musk", "white musk", "oakmoss"]);
-    // Expect 3 stops (the two musks collapse; oakmoss forms one real
-    // stop; padding fills to the minimum of 3).
-    expect(p.stops.length).toBeGreaterThanOrEqual(3);
-    // And exactly one of those stops should represent the musk
-    // family (beige/warm skin-tone) — we didn't duplicate it.
-    const beige = p.stops.filter(
-      (s) => s.bg.h > 20 && s.bg.h < 40 && s.bg.l > 60 && s.bg.s < 20,
-    );
-    expect(beige.length).toBeLessThanOrEqual(2); // 1 real + at most 1 tonal pad
+    const muskishNotes = p.notes.filter((n) => n.includes("musk"));
+    expect(muskishNotes.length).toBe(1);
+    // And the first note (musk) is the one kept, since dedup is
+    // walk-in-order: first seen wins.
+    expect(muskishNotes[0]).toBe("musk");
   });
 
   it("handles an empty notes array without throwing", () => {
