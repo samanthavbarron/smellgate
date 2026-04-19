@@ -527,6 +527,110 @@ export async function getUserShelf(
   }));
 }
 
+/**
+ * Derive a user's signature notes — the notes most characteristic of
+ * their taste, weighted to surface *relatively* distinctive choices.
+ * Powers the chromatic-identity user palette (issue #217 phase 4).
+ *
+ * Algorithm:
+ *
+ *   1. Accumulate a per-note weight from the user's reviews (weight =
+ *      rating / 10; a 10/10 counts more than a 4/10) and shelf items
+ *      (weight = 0.5 — a shelf-add is a moderate positive signal but
+ *      weaker than an explicit high rating).
+ *   2. Divide each note's user weight by `sqrt(global_frequency)` so a
+ *      user who loves vanilla in a catalog where half the perfumes
+ *      contain vanilla ranks it lower than a user who loves galbanum
+ *      in a catalog where only one perfume contains it. Inverse-
+ *      document-frequency-ish, tempered by a `sqrt` so the correction
+ *      doesn't over-boost ultra-rare notes.
+ *   3. Sort descending, take the top `limit`.
+ *
+ * The pyramid-position weighting from issue #217 is deferred — the
+ * lexicon stores notes as a flat array (see docs/lexicons.md) — but
+ * plugs into step 1 when that metadata arrives.
+ *
+ * Returns an empty array if the user has no reviews or shelf items.
+ */
+export async function getSignatureNotesForUser(
+  db: Db,
+  did: string,
+  limit = 7,
+): Promise<string[]> {
+  // User's rated perfumes: URI → rating (/10).
+  const reviews = await db
+    .selectFrom("smellgate_review")
+    .select(["perfume_uri", "rating"])
+    .where("author_did", "=", did)
+    .execute();
+  const shelfItems = await db
+    .selectFrom("smellgate_shelf_item")
+    .select("perfume_uri")
+    .where("author_did", "=", did)
+    .execute();
+
+  if (reviews.length === 0 && shelfItems.length === 0) return [];
+
+  // Per-note accumulator for this user.
+  const userWeight = new Map<string, number>();
+  const addWeight = (note: string, w: number) => {
+    userWeight.set(note, (userWeight.get(note) ?? 0) + w);
+  };
+
+  // Walk reviews: pull the perfume's notes, weight by rating / 10.
+  const reviewedUris = Array.from(new Set(reviews.map((r) => r.perfume_uri)));
+  const shelfUris = Array.from(new Set(shelfItems.map((s) => s.perfume_uri)));
+  const allTouchedUris = Array.from(new Set([...reviewedUris, ...shelfUris]));
+  if (allTouchedUris.length === 0) return [];
+
+  const noteRows = await db
+    .selectFrom("smellgate_perfume_note")
+    .select(["perfume_uri", "note"])
+    .where("perfume_uri", "in", allTouchedUris)
+    .execute();
+  const notesByPerfume = new Map<string, string[]>();
+  for (const row of noteRows) {
+    const list = notesByPerfume.get(row.perfume_uri) ?? [];
+    list.push(row.note);
+    notesByPerfume.set(row.perfume_uri, list);
+  }
+
+  for (const r of reviews) {
+    const notes = notesByPerfume.get(r.perfume_uri);
+    if (!notes) continue;
+    const w = Math.max(0.05, r.rating / 10); // floor so a 1/10 still registers
+    for (const n of notes) addWeight(n, w);
+  }
+  for (const s of shelfItems) {
+    const notes = notesByPerfume.get(s.perfume_uri);
+    if (!notes) continue;
+    for (const n of notes) addWeight(n, 0.5);
+  }
+
+  // Global note frequency: per-note row count in the canonical catalog.
+  const globalRows = await db
+    .selectFrom("smellgate_perfume_note")
+    .select([
+      "note",
+      (eb) => eb.fn.countAll<number>().as("count"),
+    ])
+    .where("note", "in", Array.from(userWeight.keys()))
+    .groupBy("note")
+    .execute();
+  const globalFreq = new Map(globalRows.map((r) => [r.note, Number(r.count)]));
+
+  // Rank by (user_weight / sqrt(global_freq)). A note the user likes
+  // that's rare in the catalog scores higher than a note they like
+  // that's in every perfume.
+  const scored: { note: string; score: number }[] = [];
+  for (const [note, w] of userWeight.entries()) {
+    const g = globalFreq.get(note) ?? 1;
+    scored.push({ note, score: w / Math.sqrt(g) });
+  }
+  scored.sort((a, b) => b.score - a.score);
+  return scored.slice(0, limit).map((s) => s.note);
+}
+
 export async function getUserReviews(
   db: Db,
   did: string,

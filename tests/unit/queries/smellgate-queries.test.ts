@@ -153,6 +153,7 @@ async function seedReview(
   author: string,
   perfumeUri: string,
   body = "nice",
+  rating = 7,
 ): Promise<string> {
   const uri = atUri(author, "app.smellgate.review", `r${seq + 1}`);
   const indexedAt = nextIndexedAt();
@@ -166,7 +167,7 @@ async function seedReview(
       indexed_at: indexedAt,
       perfume_uri: perfumeUri,
       perfume_cid: "bafkreicperfume00fake",
-      rating: 7,
+      rating,
       sillage: 5,
       longevity: 6,
       body,
@@ -1298,6 +1299,101 @@ describe("smellgate-queries", () => {
       const s = await seedSubmission(env.db, USER_A, "alpha");
       const got = await env.q.getResolutionForSubmission(env.db.getDb(), s);
       expect(got).toBeNull();
+    });
+  });
+
+  describe("getSignatureNotesForUser (#217)", () => {
+    it("returns empty for a user with no reviews or shelf items", async () => {
+      const notes = await env.q.getSignatureNotesForUser(env.db.getDb(), USER_A);
+      expect(notes).toEqual([]);
+    });
+
+    it("surfaces notes from high-rated reviews", async () => {
+      const p1 = await seedPerfume(env.db, {
+        name: "Rose One",
+        house: "Y",
+        notes: ["rose", "vetiver"],
+      });
+      const p2 = await seedPerfume(env.db, {
+        name: "Rose Two",
+        house: "Y",
+        notes: ["rose", "oakmoss"],
+      });
+      await seedReview(env.db, USER_A, p1, "love", 10);
+      await seedReview(env.db, USER_A, p2, "love", 10);
+      const notes = await env.q.getSignatureNotesForUser(env.db.getDb(), USER_A);
+      // Rose appears in both perfumes — it should rank highly for
+      // USER_A. vetiver / oakmoss each appear once.
+      expect(notes[0]).toBe("rose");
+      expect(notes).toContain("vetiver");
+      expect(notes).toContain("oakmoss");
+    });
+
+    it("weights shelf items (0.5 each) below high-rated reviews", async () => {
+      const pShelf = await seedPerfume(env.db, {
+        name: "Shelf One",
+        house: "Z",
+        notes: ["vanilla"],
+      });
+      const pReview = await seedPerfume(env.db, {
+        name: "Review One",
+        house: "Z",
+        notes: ["galbanum"],
+      });
+      await seedShelfItem(env.db, USER_A, pShelf);
+      await seedReview(env.db, USER_A, pReview, "great", 10);
+      const notes = await env.q.getSignatureNotesForUser(env.db.getDb(), USER_A);
+      // galbanum (1.0) ranks above vanilla (0.5) before baseline
+      // adjustment — and both notes are catalog-unique so baseline
+      // doesn't flip the order.
+      expect(notes.indexOf("galbanum")).toBeLessThan(
+        notes.indexOf("vanilla"),
+      );
+    });
+
+    it("favors notes that are rare in the catalog (inverse-frequency)", async () => {
+      // Seed a catalog where `rose` is in 5 perfumes and `galbanum`
+      // is in 1 — both reviewed once by USER_A with the same rating.
+      // `galbanum` should rank above `rose` despite equal user
+      // weight, since it's more distinctive.
+      for (let i = 0; i < 5; i += 1) {
+        await seedPerfume(env.db, {
+          name: `Rose ${i}`,
+          house: "Y",
+          notes: ["rose"],
+        });
+      }
+      const userRose = await seedPerfume(env.db, {
+        name: "User Rose",
+        house: "Y",
+        notes: ["rose"],
+      });
+      const userGalbanum = await seedPerfume(env.db, {
+        name: "User Galbanum",
+        house: "Y",
+        notes: ["galbanum"],
+      });
+      await seedReview(env.db, USER_A, userRose, "ok", 10);
+      await seedReview(env.db, USER_A, userGalbanum, "ok", 10);
+      const notes = await env.q.getSignatureNotesForUser(env.db.getDb(), USER_A);
+      expect(notes.indexOf("galbanum")).toBeLessThan(
+        notes.indexOf("rose"),
+      );
+    });
+
+    it("respects the limit parameter", async () => {
+      const p = await seedPerfume(env.db, {
+        name: "Many Notes",
+        house: "Z",
+        notes: Array.from({ length: 12 }, (_, i) => `note${i}`),
+      });
+      await seedReview(env.db, USER_A, p, "ok", 8);
+      const notes = await env.q.getSignatureNotesForUser(
+        env.db.getDb(),
+        USER_A,
+        5,
+      );
+      expect(notes.length).toBe(5);
     });
   });
 });
